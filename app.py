@@ -28,83 +28,78 @@ def detect_ibi_format(file_content):
         return 'raw_values'
 
 def read_real_ibi_file(uploaded_file):
-    """Legge file IBI reali da dispositivi come Bodyguard, Polar, ecc."""
+    """Legge file IBI reali - VERSIONE MIGLIORATA per file con header"""
     try:
-        # Torna all'inizio del file
         uploaded_file.seek(0)
         content = uploaded_file.getvalue().decode('utf-8')
         lines = content.split('\n')
         
         st.write(f"📝 Righe totali nel file: {len(lines)}")
         
-        # Cerca i dati RR dopo l'header
         rr_intervals = []
-        data_started = False
-        header_lines = []
-        data_lines = []
+        in_data_section = False
+        header_count = 0
+        data_count = 0
+        skipped_count = 0
         
         for i, line in enumerate(lines):
             line = line.strip()
             
             if not line:
+                skipped_count += 1
                 continue
+            
+            # SEZIONE HEADER - salta tutto fino ai dati
+            if not in_data_section:
+                if any(keyword in line.lower() for keyword in ['[header]', 'header', 'data', 'rr', 'ibi', 'interval']):
+                    header_count += 1
+                    st.info(f"📋 Header rilevato (riga {i+1}): {line}")
+                    continue
                 
-            # Salta linee vuote e commenti/header
-            if line.startswith('[') or line.startswith('#') or line.startswith('//') or 'header' in line.lower():
-                header_lines.append(f"Riga {i+1}: {line}")
-                continue
+                # Se troviamo un numero, probabilmente siamo nei dati
+                if line.replace('.', '').replace(',', '').replace('-', '').isdigit():
+                    in_data_section = True
+                    st.success(f"🎯 Inizio dati rilevato alla riga {i+1}")
+                else:
+                    header_count += 1
+                    continue
             
-            # Se raggiungiamo i dati, inizia a raccogliere
-            if any(keyword in line.lower() for keyword in ['data', 'rr', 'ibi', 'interval']):
-                data_started = True
-                st.info(f"🎯 Trovata indicazione dati: {line}")
-                continue
-            
-            # Se siamo nella sezione dati o non ci sono lettere (solo numeri)
-            if data_started or not any(char.isalpha() for char in line.replace('.', '').replace(',', '')):
-                data_lines.append(line)
-                # Prova a estrarre numeri dalla riga
-                parts = line.split()
-                for part in parts:
-                    try:
-                        # Pulisci il valore da eventuali caratteri speciali
-                        clean_part = part.replace(',', '.').strip()
-                        value = float(clean_part)
-                        
-                        # Verifica che sia un RR interval realistico
-                        if 200 <= value <= 2000:  # RR intervals realistici in ms
-                            rr_intervals.append(value)
-                        elif 0.2 <= value <= 2.0:  # Forse sono in secondi
-                            rr_intervals.append(value * 1000)  # Converti in ms
-                        elif 20 <= value <= 200:   # Forse sono in centisecondi
-                            rr_intervals.append(value * 10)    # Converti in ms
-                    except ValueError:
-                        continue
+            # SEZIONE DATI - processa solo numeri
+            if in_data_section:
+                # Verifica che sia un numero valido
+                clean_line = line.replace(',', '.').strip()
+                try:
+                    value = float(clean_line)
+                    
+                    # Filtra valori realistici per RR intervals
+                    if 200 <= value <= 2000:  # ms
+                        rr_intervals.append(value)
+                        data_count += 1
+                    elif 0.2 <= value <= 2.0:  # secondi → converti
+                        rr_intervals.append(value * 1000)
+                        data_count += 1
+                    elif 20 <= value <= 200:   # centisecondi → converti
+                        rr_intervals.append(value * 10)
+                        data_count += 1
+                    else:
+                        skipped_count += 1  # Valore fuori range
+                except ValueError:
+                    skipped_count += 1  # Non è un numero
         
-        # Debug info
-        st.info(f"📋 Righe header trovate: {len(header_lines)}")
-        st.info(f"📊 Righe dati trovate: {len(data_lines)}")
-        
-        if header_lines:
-            with st.expander("🔍 Vedi dettagli header"):
-                for header in header_lines[:10]:  # Mostra prime 10 righe header
-                    st.write(header)
-        
-        if data_lines:
-            with st.expander("🔍 Vedi prime righe dati"):
-                for data_line in data_lines[:10]:  # Mostra prime 10 righe dati
-                    st.write(data_line)
-        
-        st.success(f"✅ Letti {len(rr_intervals)} intervalli RR validi")
+        # Statistiche
+        st.write(f"📊 **Statistiche lettura:**")
+        st.write(f"- 📋 Righe header: {header_count}")
+        st.write(f"- 📈 Righe dati valide: {data_count}") 
+        st.write(f- 🗑️ Righe saltate: {skipped_count}")
+        st.write(f"- 🎯 Intervalli RR estratti: {len(rr_intervals)}")
         
         if len(rr_intervals) == 0:
             st.error("❌ Nessun dato RR valido trovato")
-            st.info("💡 **Suggerimenti:**")
-            st.markdown("""
-            - Verifica che il file contenga valori numerici
-            - I valori dovrebbero essere tra 200-2000 ms (o 0.2-2.0 secondi)
-            - Se il formato è diverso, condividi un esempio delle prime righe
-            """)
+            # Mostra prime 30 righe per debug
+            st.subheader("🔍 Prime 30 righe del file:")
+            for i, line in enumerate(lines[:30]):
+                marker = "📍 DATI" if i >= header_count else "📋 HEADER"
+                st.write(f"{i+1}: {marker} - {line}")
         
         return rr_intervals
         
