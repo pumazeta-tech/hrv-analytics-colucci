@@ -98,6 +98,94 @@ def create_rr_timeline_plot(rr_intervals):
     return fig
 
 # =============================================================================
+# FUNZIONI PER DIARIO ATTIVITÀ
+# =============================================================================
+
+def create_activity_diary():
+    """Crea un diario delle attività con orari specifici"""
+    st.sidebar.header("📝 Diario Attività")
+    
+    # Inizializza session state per attività
+    if 'activities' not in st.session_state:
+        st.session_state.activities = []
+    
+    with st.sidebar.expander("➕ Aggiungi Attività", expanded=False):
+        col1, col2 = st.columns(2)
+        with col1:
+            activity_date = st.date_input("Data attività", datetime.now(), key="activity_date")
+        with col2:
+            activity_type = st.selectbox(
+                "Tipo attività",
+                ["Lavoro", "Allenamento", "Pranzo", "Cena", "Sonno", "Rilassamento", 
+                 "Riunione", "Viaggio", "Studio", "Altro"],
+                key="activity_type"
+            )
+        
+        col3, col4 = st.columns(2)
+        with col3:
+            start_time = st.time_input("Ora inizio", datetime.now().time(), key="start_time")
+        with col4:
+            end_time = st.time_input("Ora fine", (datetime.now() + timedelta(hours=1)).time(), key="end_time")
+        
+        activity_note = st.text_input("Note attività", key="activity_note")
+        
+        col5, col6 = st.columns(2)
+        with col5:
+            if st.button("💾 Salva Attività", use_container_width=True):
+                # Combina data e ora
+                start_datetime = datetime.combine(activity_date, start_time)
+                end_datetime = datetime.combine(activity_date, end_time)
+                
+                # Verifica che l'orario di fine sia dopo l'orario di inizio
+                if end_datetime <= start_datetime:
+                    st.error("❌ L'orario di fine deve essere successivo all'orario di inizio")
+                else:
+                    activity = {
+                        'type': activity_type,
+                        'start': start_datetime,
+                        'end': end_datetime,
+                        'note': activity_note,
+                        'color': get_activity_color(activity_type)
+                    }
+                    st.session_state.activities.append(activity)
+                    st.success("✅ Attività salvata!")
+        
+        with col6:
+            if st.button("🗑️ Cancella Tutto", use_container_width=True):
+                st.session_state.activities = []
+                st.success("✅ Tutte le attività cancellate!")
+    
+    # Mostra attività salvate
+    if st.session_state.activities:
+        st.sidebar.subheader("📋 Attività Salvate")
+        for i, activity in enumerate(st.session_state.activities):
+            with st.sidebar.expander(f"{activity['type']} - {activity['start'].strftime('%H:%M')}→{activity['end'].strftime('%H:%M')}", False):
+                st.write(f"**Data:** {activity['start'].strftime('%d/%m/%Y')}")
+                st.write(f"**Ora:** {activity['start'].strftime('%H:%M')} - {activity['end'].strftime('%H:%M')}")
+                if activity['note']:
+                    st.write(f"**Note:** {activity['note']}")
+                
+                if st.button(f"❌ Elimina", key=f"delete_{i}"):
+                    st.session_state.activities.pop(i)
+                    st.rerun()
+
+def get_activity_color(activity_type):
+    """Restituisce il colore per ogni tipo di attività"""
+    color_map = {
+        'Lavoro': '#e74c3c',
+        'Allenamento': '#e67e22', 
+        'Pranzo': '#2ecc71',
+        'Cena': '#27ae60',
+        'Sonno': '#3498db',
+        'Rilassamento': '#9b59b6',
+        'Riunione': '#c0392b',
+        'Viaggio': '#f39c12',
+        'Studio': '#34495e',
+        'Altro': '#95a5a6'
+    }
+    return color_map.get(activity_type, '#95a5a6')
+
+# =============================================================================
 # FUNZIONE PRINCIPALE DI ANALISI - VERSIONE COMPLETA ORIGINALE
 # =============================================================================
 
@@ -199,13 +287,17 @@ def calculate_triple_metrics(total_hours, day_offset, actual_date, is_sleep_peri
 # FUNZIONI AGGIUNTE PER COMPLETARE TUTTO - ORIGINALI
 # =============================================================================
 
-def generate_timeline_data(actual_datetime, total_hours):
+def generate_timeline_data(start_datetime, total_hours):
     """Genera dati per il grafico temporale con attività"""
     np.random.seed(42)
     
     total_points = int(total_hours * 4)
     hours = np.linspace(0, total_hours, total_points)
-    start_hour = actual_datetime.hour
+    
+    # Crea timeline reale basata su start_datetime
+    time_labels = [start_datetime + timedelta(hours=float(hour)) for hour in hours]
+    
+    start_hour = start_datetime.hour + start_datetime.minute/60
     
     shifted_hours = [(h + start_hour) % 24 for h in hours]
     
@@ -221,15 +313,12 @@ def generate_timeline_data(actual_datetime, total_hours):
     rmssd_data = np.maximum(rmssd_data, 10)
     hr_data = np.clip(hr_data, 45, 120)
     
-    return hours, sdnn_data, rmssd_data, hr_data
+    return time_labels, sdnn_data, rmssd_data, hr_data
 
-def create_timeline_plot(hours, sdnn_data, rmssd_data, hr_data, total_hours, actual_datetime):
-    """Crea il grafico temporale con SDNN, RMSSD e HR con ORE REALI"""
+def create_timeline_plot_with_activities(time_labels, sdnn_data, rmssd_data, hr_data, total_hours, start_datetime):
+    """Crea il grafico temporale con SDNN, RMSSD e HR con attività personalizzate"""
     
     fig = go.Figure()
-    
-    # Converti ore in datetime reali
-    time_labels = [actual_datetime + timedelta(hours=float(hour)) for hour in hours]
     
     # SDNN
     fig.add_trace(go.Scatter(
@@ -256,48 +345,40 @@ def create_timeline_plot(hours, sdnn_data, rmssd_data, hr_data, total_hours, act
         yaxis='y2'
     ))
     
-    # Aggiungi aree attività con orari reali
-    activities = [
-        (0, 7, 'Sonno', '#3498db'),
-        (7, 8, 'Colazione', '#f1c40f'),
-        (8, 12, 'Lavoro', '#e74c3c'),
-        (12, 13, 'Pranzo', '#2ecc71'),
-        (13, 17, 'Lavoro', '#e74c3c'),
-        (17, 18, 'Allenamento', '#e67e22'),
-        (19, 20, 'Cena', '#2ecc71'),
-        (22, 24, 'Sonno', '#3498db')
-    ]
-    
-    for start, end, activity, color in activities:
-        if start < total_hours:
-            start_time = actual_datetime + timedelta(hours=float(start))
-            end_time = actual_datetime + timedelta(hours=float(min(end, total_hours)))
+    # Aggiungi attività dal diario
+    if 'activities' in st.session_state and st.session_state.activities:
+        for i, activity in enumerate(st.session_state.activities):
+            # Verifica se l'attività ricade nel periodo di registrazione
+            recording_end = start_datetime + timedelta(hours=total_hours)
             
-            fig.add_vrect(
-                x0=start_time, x1=end_time,
-                fillcolor=color, opacity=0.2,
-                line_width=0, 
-                annotation_text=activity,
-                annotation_position="top left",
-                annotation=dict(font_size=10, font_color=color)
-            )
+            if (activity['end'] >= start_datetime and activity['start'] <= recording_end):
+                # Calcola l'intersezione tra attività e periodo di registrazione
+                activity_start = max(activity['start'], start_datetime)
+                activity_end = min(activity['end'], recording_end)
+                
+                if activity_start < activity_end:
+                    fig.add_vrect(
+                        x0=activity_start, x1=activity_end,
+                        fillcolor=activity['color'], opacity=0.3,
+                        line_width=1, line_color=activity['color'],
+                        annotation_text=activity['type'],
+                        annotation_position="top left",
+                        annotation=dict(font_size=10, font_color=activity['color'])
+                    )
     
     # Formatta l'asse X con orari
     if total_hours <= 6:
         # Per registrazioni brevi: mostra ogni 30 minuti
-        tick_interval = "30min"
         dtick = 30 * 60 * 1000  # 30 minuti in millisecondi
     elif total_hours <= 12:
         # Per mezze giornate: mostra ogni ora
-        tick_interval = "60min" 
         dtick = 60 * 60 * 1000  # 1 ora in millisecondi
     else:
         # Per giornate intere: mostra ogni 2 ore
-        tick_interval = "120min"
         dtick = 120 * 60 * 1000  # 2 ore in millisecondi
     
     fig.update_layout(
-        title=f'📈 Variabilità Cardiaca - {actual_datetime.strftime("%d/%m/%Y")}',
+        title=f'📈 Variabilità Cardiaca - {start_datetime.strftime("%d/%m/%Y %H:%M")}',
         xaxis_title='Ora del Giorno',
         yaxis_title='Variabilità (ms)',
         yaxis2=dict(
@@ -516,8 +597,12 @@ def create_frequency_analysis(metrics):
     df_freq = pd.DataFrame(freq_data)
     st.dataframe(df_freq, use_container_width=True)
 
-def create_complete_analysis_dashboard(metrics):
+def create_complete_analysis_dashboard(metrics, start_datetime=None):
     """Crea un dashboard COMPLETO con TUTTE le funzioni originali - VERSIONE CORRETTA"""
+    
+    # Usa start_datetime dalle metriche se non fornito
+    if start_datetime is None:
+        start_datetime = metrics['our_algo']['actual_date']
     
     # 1. METRICHE PRINCIPALI - TAB COMPARATIVA
     st.header("📊 Analisi Comparativa Completa")
@@ -692,18 +777,18 @@ def create_complete_analysis_dashboard(metrics):
     </div>
     """, unsafe_allow_html=True)
     
-    # 7. GRAFICO TEMPORALE COMPLETO
+    # 7. GRAFICO TEMPORALE COMPLETO CON ATTIVITÀ
     st.header("⏰ Analisi Temporale - SDNN, RMSSD e HR")
     
-    hours, sdnn_data, rmssd_data, hr_data = generate_timeline_data(
-        metrics['our_algo']['actual_date'], 
+    time_labels, sdnn_data, rmssd_data, hr_data = generate_timeline_data(
+        start_datetime, 
         metrics['our_algo']['recording_hours']
     )
     
-    timeline_fig = create_timeline_plot(
-        hours, sdnn_data, rmssd_data, hr_data,
+    timeline_fig = create_timeline_plot_with_activities(
+        time_labels, sdnn_data, rmssd_data, hr_data,
         metrics['our_algo']['recording_hours'],
-        metrics['our_algo']['actual_date']
+        start_datetime
     )
     
     st.plotly_chart(timeline_fig, use_container_width=True)
@@ -726,7 +811,7 @@ def create_complete_analysis_dashboard(metrics):
         """)
     
     with col2:
-        st.subheader("🎯 Raccomandazioni Finales")
+        st.subheader("🎯 Raccomandazioni Finali")
         st.markdown("""
         - Continuare con attività fisica regolare
         - Praticare tecniche di respirazione
@@ -760,22 +845,69 @@ with st.sidebar:
     st.markdown("---")
     st.header("⚙️ Analisi Simulata")
     
+    # SELEZIONE INTERVALLO TEMPORALE CON DATA/ORA
+    col1, col2 = st.columns(2)
+    with col1:
+        start_date = st.date_input("Data inizio", datetime.now(), key="start_date")
+    with col2:
+        start_time = st.time_input("Ora inizio", datetime.now().time(), key="start_time")
+    
+    col3, col4 = st.columns(2)
+    with col3:
+        end_date = st.date_input("Data fine", datetime.now(), key="end_date")
+    with col4:
+        end_time = st.time_input("Ora fine", (datetime.now() + timedelta(hours=24)).time(), key="end_time")
+    
+    # Calcola durata totale
+    start_datetime = datetime.combine(start_date, start_time)
+    end_datetime = datetime.combine(end_date, end_time)
+    total_hours = (end_datetime - start_datetime).total_seconds() / 3600
+    
+    if total_hours <= 0:
+        st.error("❌ La data/ora di fine deve essere successiva all'inizio")
+        total_hours = 24.0
+    else:
+        st.info(f"⏱️ Durata registrazione: {total_hours:.1f} ore")
+    
+    # SELEZIONE INTERVALLO ANALISI
+    st.subheader("🎚️ Selezione Intervallo Analisi")
+    
+    if total_hours > 0:
+        analysis_start = st.slider(
+            "Inizio analisi (ore dall'inizio)", 
+            0.0, total_hours, 0.0, 0.1,
+            help="Sposta per selezionare l'inizio del segmento da analizzare"
+        )
+        analysis_end = st.slider(
+            "Fine analisi (ore dall'inizio)", 
+            0.0, total_hours, total_hours, 0.1,
+            help="Sposta per selezionare la fine del segmento da analizzare"
+        )
+        
+        analysis_duration = analysis_end - analysis_start
+        if analysis_duration > 0:
+            st.success(f"📊 Analizzerai {analysis_duration:.1f} ore di dati")
+        else:
+            st.error("❌ L'intervallo di analisi deve essere valido")
+    else:
+        analysis_start = 0.0
+        analysis_end = 24.0
+        analysis_duration = 24.0
+    
     health_factor = st.slider(
         "Profilo Salute", 
         min_value=0.1, max_value=1.0, value=0.5,
         help="0.1 = Sedentario, 1.0 = Atleta"
     )
     
-    recording_hours = st.slider(
-        "Durata Registrazione (ore)", 
-        min_value=0.1, max_value=24.0, value=24.0, step=0.1
-    )
-    
     include_sleep = st.checkbox("Includi analisi sonno", True)
     
     analyze_btn = st.button("🚀 ANALISI COMPLETA", type="primary")
 
-# Main Content - NESSUNA VARIABILE GLOBALE metrics QUI!
+# DIARIO ATTIVITÀ (sempre visibile)
+create_activity_diary()
+
+# Main Content
 if analyze_btn:
     with st.spinner("🎯 **ANALISI COMPLETA IN CORSO**..."):
         if uploaded_file is not None:
@@ -804,8 +936,8 @@ if analyze_btn:
                             'hr_min': max(40, hrv_metrics['hr_mean'] - 15),
                             'hr_max': min(180, hrv_metrics['hr_mean'] + 30),
                             'hr_sd': hrv_metrics['sdnn'] / 10,
-                            'actual_date': datetime.now(),
-                            'recording_hours': hrv_metrics['total_duration'] / 60,
+                            'actual_date': start_datetime + timedelta(hours=analysis_start),
+                            'recording_hours': analysis_duration,
                             'is_sleep_period': is_sleep_time,
                             'health_profile_factor': 0.5,
                             'total_power': hrv_metrics['sdnn'] ** 2 * 10,
@@ -847,24 +979,28 @@ if analyze_btn:
                         }
                     }
                     
-                    # USA LA TUA ANALISI COMPLETA
-                    create_complete_analysis_dashboard(metrics)
+                    # USA LA TUA ANALISI COMPLETA con start_datetime corretto
+                    analysis_start_datetime = start_datetime + timedelta(hours=analysis_start)
+                    create_complete_analysis_dashboard(metrics, analysis_start_datetime)
                     
             except Exception as e:
                 st.error(f"❌ Errore nel processare il file: {e}")
         
         else:
             # ANALISI STANDARD (simulata)
+            # Calcola datetime di inizio analisi
+            analysis_start_datetime = start_datetime + timedelta(hours=analysis_start)
+            
             metrics = calculate_triple_metrics(
-                total_hours=recording_hours,
+                total_hours=analysis_duration,
                 day_offset=0, 
-                actual_date=datetime.now(),
-                is_sleep_period=include_sleep and recording_hours >= 6,
+                actual_date=analysis_start_datetime,
+                is_sleep_period=include_sleep and analysis_duration >= 6,
                 health_profile_factor=health_factor
             )
             
             st.success("✅ **ANALISI SIMULATA COMPLETATA!** Tutti i dati sono pronti.")
-            create_complete_analysis_dashboard(metrics)
+            create_complete_analysis_dashboard(metrics, analysis_start_datetime)
 
 else:
     # Schermata iniziale
@@ -880,6 +1016,14 @@ else:
         - Colonne: RR, IBI, Interval
         - Valori numerici (ms)
         """)
+        
+        st.subheader("🆕 Nuove Funzionalità")
+        st.markdown("""
+        - 📝 **Diario Attività** personalizzato
+        - 🎚️ **Selezione intervallo** avanzata
+        - ⏰ **Data/ora specifiche** per analisi
+        - 🎨 **Attività integrate** nei grafici
+        """)
     
     with col2:
         st.subheader("🎯 Cosa include:")
@@ -890,6 +1034,7 @@ else:
         - 📡 **Analisi frequenziale**
         - 😴 **Analisi sonno** completa
         - ⏰ **Timeline** interattiva
+        - 📝 **Diario attività** integrato
         """)
 
 # Footer
