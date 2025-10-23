@@ -112,46 +112,48 @@ def create_activity_diary():
     with st.sidebar.expander("➕ Aggiungi Attività", expanded=False):
         col1, col2 = st.columns(2)
         with col1:
-            activity_date = st.date_input("Data attività", datetime.now(), key="activity_date")
+            activity_date = st.date_input("Data attività", datetime.now(), key="act_date")
         with col2:
-            activity_type = st.selectbox(
-                "Tipo attività",
-                ["Lavoro", "Allenamento", "Pranzo", "Cena", "Sonno", "Rilassamento", 
-                 "Riunione", "Viaggio", "Studio", "Altro"],
-                key="activity_type"
-            )
+            # Attività libera invece di menu predefinito
+            activity_type = st.text_input("Attività", placeholder="Es: Caffè, Riunione, Pausa...", key="act_type")
         
         col3, col4 = st.columns(2)
         with col3:
-            start_time = st.time_input("Ora inizio", datetime.now().time(), key="start_time")
+            start_time = st.time_input("Ora inizio", datetime.now().time(), key="act_start_time")
         with col4:
-            end_time = st.time_input("Ora fine", (datetime.now() + timedelta(hours=1)).time(), key="end_time")
+            end_time = st.time_input("Ora fine", (datetime.now() + timedelta(hours=1)).time(), key="act_end_time")
         
-        activity_note = st.text_input("Note attività", key="activity_note")
+        # Selezione colore personalizzato
+        activity_color = st.color_picker("Colore attività", "#3498db", key="act_color")
+        
+        activity_note = st.text_input("Note attività", placeholder="Descrizione opzionale...", key="act_note")
         
         col5, col6 = st.columns(2)
         with col5:
-            if st.button("💾 Salva Attività", use_container_width=True):
-                # Combina data e ora
-                start_datetime = datetime.combine(activity_date, start_time)
-                end_datetime = datetime.combine(activity_date, end_time)
-                
-                # Verifica che l'orario di fine sia dopo l'orario di inizio
-                if end_datetime <= start_datetime:
-                    st.error("❌ L'orario di fine deve essere successivo all'orario di inizio")
+            if st.button("💾 Salva Attività", use_container_width=True, key="save_act"):
+                if not activity_type.strip():
+                    st.error("❌ Inserisci un nome per l'attività")
                 else:
-                    activity = {
-                        'type': activity_type,
-                        'start': start_datetime,
-                        'end': end_datetime,
-                        'note': activity_note,
-                        'color': get_activity_color(activity_type)
-                    }
-                    st.session_state.activities.append(activity)
-                    st.success("✅ Attività salvata!")
+                    # Combina data e ora
+                    start_datetime = datetime.combine(activity_date, start_time)
+                    end_datetime = datetime.combine(activity_date, end_time)
+                    
+                    # Verifica che l'orario di fine sia dopo l'orario di inizio
+                    if end_datetime <= start_datetime:
+                        st.error("❌ L'orario di fine deve essere successivo all'orario di inizio")
+                    else:
+                        activity = {
+                            'type': activity_type.strip(),
+                            'start': start_datetime,
+                            'end': end_datetime,
+                            'note': activity_note,
+                            'color': activity_color
+                        }
+                        st.session_state.activities.append(activity)
+                        st.success("✅ Attività salvata!")
         
         with col6:
-            if st.button("🗑️ Cancella Tutto", use_container_width=True):
+            if st.button("🗑️ Cancella Tutto", use_container_width=True, key="clear_acts"):
                 st.session_state.activities = []
                 st.success("✅ Tutte le attività cancellate!")
     
@@ -159,31 +161,16 @@ def create_activity_diary():
     if st.session_state.activities:
         st.sidebar.subheader("📋 Attività Salvate")
         for i, activity in enumerate(st.session_state.activities):
-            with st.sidebar.expander(f"{activity['type']} - {activity['start'].strftime('%H:%M')}→{activity['end'].strftime('%H:%M')}", False):
+            with st.sidebar.expander(f"🕒 {activity['start'].strftime('%H:%M')} - {activity['type']}", False):
                 st.write(f"**Data:** {activity['start'].strftime('%d/%m/%Y')}")
                 st.write(f"**Ora:** {activity['start'].strftime('%H:%M')} - {activity['end'].strftime('%H:%M')}")
+                st.write(f"**Colore:** {activity['color']}")
                 if activity['note']:
                     st.write(f"**Note:** {activity['note']}")
                 
-                if st.button(f"❌ Elimina", key=f"delete_{i}"):
+                if st.button(f"❌ Elimina", key=f"del_act_{i}"):
                     st.session_state.activities.pop(i)
                     st.rerun()
-
-def get_activity_color(activity_type):
-    """Restituisce il colore per ogni tipo di attività"""
-    color_map = {
-        'Lavoro': '#e74c3c',
-        'Allenamento': '#e67e22', 
-        'Pranzo': '#2ecc71',
-        'Cena': '#27ae60',
-        'Sonno': '#3498db',
-        'Rilassamento': '#9b59b6',
-        'Riunione': '#c0392b',
-        'Viaggio': '#f39c12',
-        'Studio': '#34495e',
-        'Altro': '#95a5a6'
-    }
-    return color_map.get(activity_type, '#95a5a6')
 
 # =============================================================================
 # FUNZIONE PRINCIPALE DI ANALISI - VERSIONE COMPLETA ORIGINALE
@@ -361,7 +348,7 @@ def create_timeline_plot_with_activities(time_labels, sdnn_data, rmssd_data, hr_
                         x0=activity_start, x1=activity_end,
                         fillcolor=activity['color'], opacity=0.3,
                         line_width=1, line_color=activity['color'],
-                        annotation_text=activity['type'],
+                        annotation_text=f"{activity['type']}",
                         annotation_position="top left",
                         annotation=dict(font_size=10, font_color=activity['color'])
                     )
@@ -848,51 +835,25 @@ with st.sidebar:
     # SELEZIONE INTERVALLO TEMPORALE CON DATA/ORA
     col1, col2 = st.columns(2)
     with col1:
-        start_date = st.date_input("Data inizio", datetime.now(), key="start_date")
+        start_date = st.date_input("Data inizio rilevazione", datetime.now(), key="start_date")
     with col2:
-        start_time = st.time_input("Ora inizio", datetime.now().time(), key="start_time")
+        start_time = st.time_input("Ora inizio rilevazione", datetime.now().time(), key="start_time")
     
-    col3, col4 = st.columns(2)
-    with col3:
-        end_date = st.date_input("Data fine", datetime.now(), key="end_date")
-    with col4:
-        end_time = st.time_input("Ora fine", (datetime.now() + timedelta(hours=24)).time(), key="end_time")
+    # Durata registrazione invece di data/ora fine
+    recording_duration = st.slider(
+        "Durata registrazione (ore)", 
+        min_value=0.1, max_value=168.0, value=24.0, step=0.1,
+        help="Durata totale della rilevazione in ore"
+    )
     
-    # Calcola durata totale
+    # Calcola data/ora fine automaticamente
     start_datetime = datetime.combine(start_date, start_time)
-    end_datetime = datetime.combine(end_date, end_time)
-    total_hours = (end_datetime - start_datetime).total_seconds() / 3600
+    end_datetime = start_datetime + timedelta(hours=recording_duration)
     
-    if total_hours <= 0:
-        st.error("❌ La data/ora di fine deve essere successiva all'inizio")
-        total_hours = 24.0
-    else:
-        st.info(f"⏱️ Durata registrazione: {total_hours:.1f} ore")
-    
-    # SELEZIONE INTERVALLO ANALISI
-    st.subheader("🎚️ Selezione Intervallo Analisi")
-    
-    if total_hours > 0:
-        analysis_start = st.slider(
-            "Inizio analisi (ore dall'inizio)", 
-            0.0, total_hours, 0.0, 0.1,
-            help="Sposta per selezionare l'inizio del segmento da analizzare"
-        )
-        analysis_end = st.slider(
-            "Fine analisi (ore dall'inizio)", 
-            0.0, total_hours, total_hours, 0.1,
-            help="Sposta per selezionare la fine del segmento da analizzare"
-        )
-        
-        analysis_duration = analysis_end - analysis_start
-        if analysis_duration > 0:
-            st.success(f"📊 Analizzerai {analysis_duration:.1f} ore di dati")
-        else:
-            st.error("❌ L'intervallo di analisi deve essere valido")
-    else:
-        analysis_start = 0.0
-        analysis_end = 24.0
-        analysis_duration = 24.0
+    st.info(f"⏱️ **Periodo rilevazione:**")
+    st.write(f"**Inizio:** {start_datetime.strftime('%d/%m/%Y %H:%M')}")
+    st.write(f"**Fine:** {end_datetime.strftime('%d/%m/%Y %H:%M')}")
+    st.write(f"**Durata:** {recording_duration:.1f} ore")
     
     health_factor = st.slider(
         "Profilo Salute", 
@@ -902,7 +863,7 @@ with st.sidebar:
     
     include_sleep = st.checkbox("Includi analisi sonno", True)
     
-    analyze_btn = st.button("🚀 ANALISI COMPLETA", type="primary")
+    analyze_btn = st.button("🚀 ANALISI COMPLETA", type="primary", use_container_width=True)
 
 # DIARIO ATTIVITÀ (sempre visibile)
 create_activity_diary()
@@ -936,8 +897,8 @@ if analyze_btn:
                             'hr_min': max(40, hrv_metrics['hr_mean'] - 15),
                             'hr_max': min(180, hrv_metrics['hr_mean'] + 30),
                             'hr_sd': hrv_metrics['sdnn'] / 10,
-                            'actual_date': start_datetime + timedelta(hours=analysis_start),
-                            'recording_hours': analysis_duration,
+                            'actual_date': start_datetime,
+                            'recording_hours': recording_duration,
                             'is_sleep_period': is_sleep_time,
                             'health_profile_factor': 0.5,
                             'total_power': hrv_metrics['sdnn'] ** 2 * 10,
@@ -980,27 +941,23 @@ if analyze_btn:
                     }
                     
                     # USA LA TUA ANALISI COMPLETA con start_datetime corretto
-                    analysis_start_datetime = start_datetime + timedelta(hours=analysis_start)
-                    create_complete_analysis_dashboard(metrics, analysis_start_datetime)
+                    create_complete_analysis_dashboard(metrics, start_datetime)
                     
             except Exception as e:
                 st.error(f"❌ Errore nel processare il file: {e}")
         
         else:
             # ANALISI STANDARD (simulata)
-            # Calcola datetime di inizio analisi
-            analysis_start_datetime = start_datetime + timedelta(hours=analysis_start)
-            
             metrics = calculate_triple_metrics(
-                total_hours=analysis_duration,
+                total_hours=recording_duration,
                 day_offset=0, 
-                actual_date=analysis_start_datetime,
-                is_sleep_period=include_sleep and analysis_duration >= 6,
+                actual_date=start_datetime,
+                is_sleep_period=include_sleep and recording_duration >= 6,
                 health_profile_factor=health_factor
             )
             
             st.success("✅ **ANALISI SIMULATA COMPLETATA!** Tutti i dati sono pronti.")
-            create_complete_analysis_dashboard(metrics, analysis_start_datetime)
+            create_complete_analysis_dashboard(metrics, start_datetime)
 
 else:
     # Schermata iniziale
@@ -1020,9 +977,10 @@ else:
         st.subheader("🆕 Nuove Funzionalità")
         st.markdown("""
         - 📝 **Diario Attività** personalizzato
-        - 🎚️ **Selezione intervallo** avanzata
-        - ⏰ **Data/ora specifiche** per analisi
-        - 🎨 **Attività integrate** nei grafici
+        - ✏️ **Attività libere** (scrivi quello che vuoi)
+        - 🎨 **Scelta colore** per ogni attività
+        - ⏰ **Data/ora specifiche** per rilevazione
+        - 🎯 **Timeline integrata** con attività
         """)
     
     with col2:
