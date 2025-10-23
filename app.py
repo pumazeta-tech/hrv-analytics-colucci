@@ -88,17 +88,17 @@ def read_real_ibi_file(uploaded_file):
         
         # Statistiche
         st.write(f"📊 **Statistiche lettura:**")
-        st.write(f"- 📋 Righe header: {header_count}")
-        st.write(f"- 📈 Righe dati valide: {data_count}") 
-        st.write(f- 🗑️ Righe saltate: {skipped_count}")
-        st.write(f"- 🎯 Intervalli RR estratti: {len(rr_intervals)}")
+        st.write(f"- Righe header: {header_count}")
+        st.write(f"- Righe dati valide: {data_count}") 
+        st.write(f"- Righe saltate: {skipped_count}")
+        st.write(f"- Intervalli RR estratti: {len(rr_intervals)}")
         
         if len(rr_intervals) == 0:
             st.error("❌ Nessun dato RR valido trovato")
             # Mostra prime 30 righe per debug
             st.subheader("🔍 Prime 30 righe del file:")
             for i, line in enumerate(lines[:30]):
-                marker = "📍 DATI" if i >= header_count else "📋 HEADER"
+                marker = "DATI" if i >= header_count else "HEADER"
                 st.write(f"{i+1}: {marker} - {line}")
         
         return rr_intervals
