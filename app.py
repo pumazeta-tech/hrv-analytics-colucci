@@ -710,9 +710,49 @@ def create_complete_analysis_dashboard(metrics):
     # 8. ANALISI FREQUENZE APPROFONDITA
     create_frequency_analysis(metrics)
     
-    # 9. ANALISI SONNO (se applicabile)
-    if metrics['our_algo']['is_sleep_period'] and metrics['our_algo']['sleep_duration'] is not None:
-        create_sleep_analysis(metrics)
+# 9. ANALISI SONNO - SEMPRE VISIBILE SE CI SONO DATI
+st.header("😴 Analisi Qualità del Sonno")
+
+# Controlla se abbiamo dati sonno validi
+has_sleep_data = (metrics['our_algo']['is_sleep_period'] and 
+                 metrics['our_algo']['sleep_duration'] is not None and
+                 metrics['our_algo']['sleep_duration'] > 0)
+
+if has_sleep_data:
+    create_sleep_analysis(metrics)
+else:
+    st.info("💤 **Dati sonno non disponibili per questa analisi**")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("""
+        ### Per attivare l'analisi sonno:
+        
+        **✅ Condizioni necessarie:**
+        - Durata registrazione ≥ 6 ore
+        - Spunta 'Includi analisi sonno' nella sidebar
+        - Orario notturno (22:00-06:00)
+        
+        **📊 Metriche sonno che vedrai:**
+        - Durata e qualità del sonno
+        - Sonno REM e profondo
+        - Efficienza e risvegli
+        - HR notturno e coerenza
+        """)
+    
+    with col2:
+        # Mostra comunque qualche metrica se disponibile
+        current_metrics = metrics['our_algo']
+        sleep_related = [
+            ('Durata Registrazione', f"{current_metrics['recording_hours']:.1f}h"),
+            ('Orario Analisi', current_metrics['actual_date'].strftime("%H:%M")),
+            ('Periodo Sonno', "✅ Sì" if current_metrics['is_sleep_period'] else "❌ No"),
+            ('Profilo Salute', f"{current_metrics['health_profile_factor']:.1f}")
+        ]
+        
+        for metric_name, metric_value in sleep_related:
+            st.metric(metric_name, metric_value)
     
     # 10. RIEPILOGO FINALE
     st.header("📋 Riepilogo Completo Analisi")
