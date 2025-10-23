@@ -11,6 +11,129 @@ import base64
 from matplotlib.patches import Ellipse
 
 # =============================================================================
+# FUNZIONI PER CARICAMENTO FILE IBI - AGGIUNGI QUI
+# =============================================================================
+
+def detect_ibi_format(file_content):
+    """Rileva automaticamente il formato del file IBI"""
+    first_lines = file_content.head(10).to_string()
+    
+    if 'RR' in first_lines or 'IBI' in first_lines or 'interval' in first_lines.lower():
+        return 'rr_intervals'
+    elif 'HR' in first_lines or 'bpm' in first_lines.lower():
+        return 'hr_values' 
+    elif 'timestamp' in first_lines.lower() and ('rr' in first_lines.lower() or 'ibi' in first_lines.lower()):
+        return 'timestamp_rr'
+    else:
+        return 'raw_values'
+
+def process_rr_intervals(df):
+    """Processa file con colonne RR/IBI intervals"""
+    rr_intervals = []
+    
+    for col in df.columns:
+        if 'rr' in col.lower() or 'ibi' in col.lower() or 'interval' in col.lower():
+            rr_intervals = df[col].dropna().values
+            break
+    
+    if len(rr_intervals) == 0:
+        for col in df.columns:
+            if pd.api.types.is_numeric_dtype(df[col]):
+                rr_intervals = df[col].dropna().values
+                break
+    
+    return rr_intervals
+
+def calculate_hrv_metrics_from_rr(rr_intervals):
+    """Calcola metriche HRV da RR intervals"""
+    if len(rr_intervals) == 0:
+        return None
+    
+    rr_intervals = np.array(rr_intervals) * 1000
+    
+    mean_rr = np.mean(rr_intervals)
+    sdnn = np.std(rr_intervals)
+    
+    differences = np.diff(rr_intervals)
+    rmssd = np.sqrt(np.mean(differences ** 2))
+    
+    hr_mean = 60000 / mean_rr if mean_rr > 0 else 0
+    
+    return {
+        'mean_rr': mean_rr,
+        'sdnn': sdnn,
+        'rmssd': rmssd, 
+        'hr_mean': hr_mean,
+        'n_intervals': len(rr_intervals),
+        'total_duration': np.sum(rr_intervals) / 60000
+    }
+
+def create_rr_timeline_plot(rr_intervals):
+    """Crea grafico timeline degli RR intervals"""
+    fig = go.Figure()
+    
+    fig.add_trace(go.Scatter(
+        x=np.arange(len(rr_intervals)), y=rr_intervals,
+        mode='lines+markers',
+        name='RR Intervals',
+        line=dict(color='#e74c3c', width=2),
+        marker=dict(size=4)
+    ))
+    
+    fig.update_layout(
+        title="📈 RR Intervals Timeline",
+        xaxis_title="Numero Battito",
+        yaxis_title="RR Interval (ms)",
+        template='plotly_white',
+        height=400
+    )
+    
+    return fig
+
+def create_file_analysis(rr_intervals, hrv_metrics):
+    """Crea analisi per file caricato"""
+    st.header("📊 Analisi HRV da File Caricato")
+    
+    # Metriche principali
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("SDNN", f"{hrv_metrics['sdnn']:.1f} ms")
+    with col2:
+        st.metric("RMSSD", f"{hrv_metrics['rmssd']:.1f} ms") 
+    with col3:
+        st.metric("Freq. Cardiaca Media", f"{hrv_metrics['hr_mean']:.1f} bpm")
+    with col4:
+        st.metric("Intervalli Analizzati", hrv_metrics['n_intervals'])
+    
+    # Timeline RR intervals
+    st.plotly_chart(create_rr_timeline_plot(rr_intervals), use_container_width=True)
+    
+    # Valutazione
+    st.subheader("🎯 Valutazione")
+    
+    if hrv_metrics['rmssd'] > 50:
+        status = "✅ VARIABILITÀ ECCELLENTE"
+        color = "green"
+        advice = "Ottima variabilità cardiaca, tipica di buona forma fisica e recupero."
+    elif hrv_metrics['rmssd'] > 30:
+        status = "👍 VARIABILITÀ BUONA" 
+        color = "blue"
+        advice = "Variabilità nella norma. Continua con uno stile di vita sano."
+    else:
+        status = "⚠️ VARIABILITÀ RIDOTTA"
+        color = "orange" 
+        advice = "Variabilità ridotta. Consigliato ridurre stress e migliorare sonno."
+    
+    st.markdown(f"""
+    <div style='padding: 20px; background-color: {color}20; border-radius: 10px; border-left: 4px solid {color};'>
+        <h4>{status}</h4>
+        <p><strong>RMSSD:</strong> {hrv_metrics['rmssd']:.1f} ms | <strong>SDNN:</strong> {hrv_metrics['sdnn']:.1f} ms</p>
+        <p><strong>Consiglio:</strong> {advice}</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+# =============================================================================
 # FUNZIONE PRINCIPALE DI ANALISI - VERSIONE COMPLETA
 # =============================================================================
 
@@ -665,7 +788,16 @@ st.markdown("### **Piattaforma Completa** - Tutte le tue funzioni di analisi int
 
 # Sidebar configurazione
 with st.sidebar:
-    st.header("⚙️ Configurazione Analisi")
+    st.header("📁 Carica Dati HRV")
+    
+    uploaded_file = st.file_uploader(
+        "Seleziona file IBI/RR intervals",
+        type=['csv', 'txt', 'xlsx'],
+        help="Supporta: CSV, TXT, Excel con colonne RR/IBI intervals"
+    )
+    
+    st.markdown("---")
+    st.header("⚙️ Analisi Simulata")
     
     health_factor = st.slider(
         "Profilo Salute", 
@@ -684,20 +816,53 @@ with st.sidebar:
 
 # Main Content
 if analyze_btn:
-    with st.spinner("🎯 **ANALISI COMPLETA IN CORSO** con tutte le tue funzioni..."):
-        # Usa le tue funzioni COMPLETE
-        metrics = calculate_triple_metrics(
-            total_hours=recording_hours,
-            day_offset=0, 
-            actual_date=datetime.now(),
-            is_sleep_period=include_sleep and recording_hours >= 6,
-            health_profile_factor=health_factor
-        )
-    
-    st.success("✅ **ANALISI COMPLETATA!** Tutti i dati sono pronti.")
-    
-    # MOSTRA TUTTO IL DASHBOARD COMPLETO
-    create_complete_analysis_dashboard(metrics)
+    with st.spinner("🎯 **ANALISI COMPLETA IN CORSO**..."):
+        if uploaded_file is not None:
+            # ANALISI CON FILE CARICATO
+            try:
+                # Leggi il file
+                if uploaded_file.name.endswith('.csv'):
+                    df = pd.read_csv(uploaded_file)
+                elif uploaded_file.name.endswith('.txt'):
+                    try:
+                        df = pd.read_csv(uploaded_file, delimiter=',')
+                    except:
+                        df = pd.read_csv(uploaded_file, delimiter='\t')
+                elif uploaded_file.name.endswith('.xlsx'):
+                    df = pd.read_excel(uploaded_file)
+                else:
+                    st.error("Formato file non supportato")
+                    st.stop()
+                
+                # Processa i dati
+                rr_intervals = process_rr_intervals(df)
+                
+                if len(rr_intervals) == 0:
+                    st.error("❌ Nessun dato RR/IBI trovato nel file")
+                    st.stop()
+                
+                # Calcola metriche HRV
+                hrv_metrics = calculate_hrv_metrics_from_rr(rr_intervals)
+                
+                if hrv_metrics:
+                    st.success("✅ **ANALISI FILE COMPLETATA!**")
+                    create_file_analysis(rr_intervals, hrv_metrics)
+                    
+            except Exception as e:
+                st.error(f"❌ Errore nel processare il file: {str(e)}")
+        
+        else:
+            # ANALISI STANDARD (simulata)
+            metrics = calculate_triple_metrics(
+                total_hours=recording_hours,
+                day_offset=0, 
+                actual_date=datetime.now(),
+                is_sleep_period=include_sleep and recording_hours >= 6,
+                health_profile_factor=health_factor
+            )
+            
+            st.success("✅ **ANALISI SIMULATA COMPLETATA!** Tutti i dati sono pronti.")
+            create_complete_analysis_dashboard(metrics)
     
     # Bottone esportazione
     col1, col2, col3 = st.columns(3)
