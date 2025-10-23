@@ -27,6 +27,139 @@ def detect_ibi_format(file_content):
     else:
         return 'raw_values'
 
+def create_complete_file_analysis(hrv_metrics, rr_intervals):
+    """Crea analisi COMPLETA come prima ma con dati reali"""
+    
+    # 1. METRICHE PRINCIPALI
+    st.header("📊 Analisi HRV Completa da File")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("SDNN", f"{hrv_metrics['sdnn']:.1f} ms")
+        st.metric("RMSSD", f"{hrv_metrics['rmssd']:.1f} ms")
+    with col2:
+        st.metric("Freq. Cardiaca Media", f"{hrv_metrics['hr_mean']:.1f} bpm")
+        st.metric("Intervalli Analizzati", hrv_metrics['n_intervals'])
+    with col3:
+        st.metric("Durata Registrazione", f"{hrv_metrics['total_duration']:.1f} min")
+        st.metric("RR Medio", f"{hrv_metrics['mean_rr']:.1f} ms")
+    
+    # 2. TIMELINE RR INTERVALS
+    st.subheader("📈 Timeline RR Intervals")
+    st.plotly_chart(create_rr_timeline_plot(rr_intervals), use_container_width=True)
+    
+    # 3. POINCARÉ PLOT (come prima ma con dati reali)
+    st.subheader("🔄 Poincaré Plot - Analisi Non Lineare")
+    
+    if len(rr_intervals) > 1:
+        rr_n = rr_intervals[:-1]
+        rr_n1 = rr_intervals[1:]
+        
+        # Calcola SD1 e SD2
+        differences = rr_n - rr_n1
+        sd1 = np.sqrt(0.5 * np.var(differences))
+        sd2 = np.sqrt(2 * np.var(rr_intervals) - 0.5 * np.var(differences))
+        
+        fig_poincare = go.Figure()
+        
+        # Punti scatter
+        fig_poincare.add_trace(go.Scatter(
+            x=rr_n, y=rr_n1, 
+            mode='markers',
+            marker=dict(size=4, color='#3498db', opacity=0.6),
+            name='Battiti RR'
+        ))
+        
+        # Linea identità
+        max_val = max(np.max(rr_n), np.max(rr_n1))
+        min_val = min(np.min(rr_n), np.min(rr_n1))
+        fig_poincare.add_trace(go.Scatter(
+            x=[min_val, max_val], y=[min_val, max_val],
+            mode='lines',
+            line=dict(dash='dash', color='red'),
+            name='Linea Identità'
+        ))
+        
+        fig_poincare.update_layout(
+            title=f'Poincaré Plot - SD1: {sd1:.1f}ms, SD2: {sd2:.1f}ms',
+            xaxis_title='RRn (ms)',
+            yaxis_title='RRn+1 (ms)',
+            template='plotly_white'
+        )
+        
+        st.plotly_chart(fig_poincare, use_container_width=True)
+    
+    # 4. ISTOGRAMMA DISTRIBUZIONE
+    st.subheader("📊 Distribuzione RR Intervals")
+    fig_hist = px.histogram(
+        x=rr_intervals, 
+        title="Distribuzione RR Intervals",
+        labels={'x': 'RR Interval (ms)', 'y': 'Frequenza'},
+        nbins=50
+    )
+    st.plotly_chart(fig_hist, use_container_width=True)
+    
+    # 5. VALUTAZIONE CLINICA (come prima)
+    st.subheader("🎯 Valutazione Clinica e Raccomandazioni")
+    
+    sdnn_val = hrv_metrics['sdnn']
+    if sdnn_val > 120:
+        valutazione = "**ECCELLENTE** - Variabilità cardiaca da atleta"
+        colore = "green"
+        raccomandazioni = "Continua così! Mantieni il tuo stile di vita sano."
+    elif sdnn_val > 80:
+        valutazione = "**BUONA** - Variabilità nella norma"
+        colore = "blue"
+        raccomandazioni = "Buon lavoro! Potresti migliorare con più attività aerobica."
+    elif sdnn_val > 60:
+        valutazione = "**NORMALE** - Variabilità accettabile" 
+        colore = "orange"
+        raccomandazioni = "Consigliato: tecniche di respirazione e riduzione stress."
+    else:
+        valutazione = "**DA MIGLIORARE** - Variabilità ridotta"
+        colore = "red"
+        raccomandazioni = "Importante: consulta un medico e migliora stile di vita."
+    
+    st.markdown(f"""
+    <div style='padding: 20px; background-color: {colore}20; border-radius: 10px; border-left: 4px solid {colore}; margin: 10px 0;'>
+        <h4>📋 Valutazione: {valutazione}</h4>
+        <p><strong>SDNN:</strong> {sdnn_val:.1f} ms | <strong>RMSSD:</strong> {hrv_metrics['rmssd']:.1f} ms</p>
+        <p><strong>💡 Raccomandazioni:</strong> {raccomandazioni}</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # 6. RIEPILOGO FINALE
+    st.header("📋 Riepilogo Completo Analisi")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("✅ Punti di Forza")
+        if hrv_metrics['sdnn'] > 80:
+            st.markdown("""
+            - Variabilità cardiaca nella norma o superiore
+            - Bilancio autonomico equilibrato  
+            - Recupero parasimpatico adeguato
+            - Coerenza cardiaca soddisfacente
+            """)
+        else:
+            st.markdown("""
+            - Monitoraggio continuo disponibile
+            - Dati sufficienti per analisi
+            - Possibilità di miglioramento
+            - Baseline stabilita
+            """)
+    
+    with col2:
+        st.subheader("🎯 Raccomandazioni Finali")
+        st.markdown("""
+        - Continuare con attività fisica regolare
+        - Praticare tecniche di respirazione
+        - Mantenere ritmi sonno-veglia regolari
+        - Monitoraggio continuo per ottimizzazione
+        """)
+
 def process_rr_intervals(df):
     """Processa file con colonne RR/IBI intervals - VERSIONE MIGLIORATA"""
     rr_intervals = []
@@ -892,7 +1025,7 @@ if analyze_btn:
                 
                 # Processa i dati - CORRETTO
                 debug_file_content(df, uploaded_file)  # Mostra debug
-                rr_intervals = process_rr_intervals(df)
+                rr_intervals = process_rr_intervals_improved(df, uploaded_file)
 
                 if len(rr_intervals) == 0:
                     st.error("❌ Nessun dato RR/IBI trovato nel file")
@@ -915,7 +1048,7 @@ if analyze_btn:
                 
                 if hrv_metrics:
                     st.success("✅ **ANALISI FILE COMPLETATA!**")
-                    create_file_analysis(rr_intervals, hrv_metrics)
+                    create_complete_file_analysis(hrv_metrics, rr_intervals)
                     
             except Exception as e:
                 st.error(f"❌ Errore nel processare il file: {str(e)}")
