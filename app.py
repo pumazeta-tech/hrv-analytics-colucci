@@ -841,7 +841,7 @@ if analyze_btn:
     is_sleep_time = current_hour >= 22 or current_hour <= 6
     
 if hrv_metrics:
-    st.success("✅ **ANALISI FILE COMPLETATA!**")
+    st.success("✅ **ANALISI FILE COMPLETATA!**")  # ← 4 SPAZI DOPO if!
     
     # Crea metriche compatibili con le tue funzioni originali
     current_hour = datetime.now().hour
@@ -897,6 +897,9 @@ if hrv_metrics:
             'coherence': 70
         }
     }
+    
+    # USA LA TUA ANALISI COMPLETA ORIGINALE!
+    create_complete_analysis_dashboard(file_metrics)
     
     # USA LA TUA ANALISI COMPLETA ORIGINALE!
     create_complete_analysis_dashboard(file_metrics)
