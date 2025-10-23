@@ -28,19 +28,43 @@ def detect_ibi_format(file_content):
         return 'raw_values'
 
 def process_rr_intervals(df):
-    """Processa file con colonne RR/IBI intervals"""
+    """Processa file con colonne RR/IBI intervals - VERSIONE MIGLIORATA"""
     rr_intervals = []
     
+    st.write("🔍 **Analisi colonne del file:**")
+    st.write(f"Colonne trovate: {list(df.columns)}")
+    st.write(f"Prime righe del file:")
+    st.dataframe(df.head(), use_container_width=True)
+    
+    # Cerca colonne RR/IBI con pattern più ampi
     for col in df.columns:
-        if 'rr' in col.lower() or 'ibi' in col.lower() or 'interval' in col.lower():
-            rr_intervals = df[col].dropna().values
+        col_lower = col.lower()
+        if any(keyword in col_lower for keyword in ['rr', 'ibi', 'interval', 'interbeat', 'r-r', 'hrv']):
+            st.success(f"✅ Trovata colonna: {col}")
+            rr_intervals = df[col].dropna().astype(float).values
             break
     
+    # Se non trova, prova la prima colonna numerica
     if len(rr_intervals) == 0:
+        st.info("🔍 Cerco colonne numeriche...")
         for col in df.columns:
             if pd.api.types.is_numeric_dtype(df[col]):
-                rr_intervals = df[col].dropna().values
+                st.success(f"✅ Usando colonna numerica: {col}")
+                rr_intervals = df[col].dropna().astype(float).values
                 break
+    
+    # Se ancora nulla, prova a convertire la prima colonna
+    if len(rr_intervals) == 0 and len(df.columns) > 0:
+        st.info("🔍 Provo a convertire la prima colonna...")
+        try:
+            first_col = df.columns[0]
+            rr_intervals = pd.to_numeric(df[first_col], errors='coerce').dropna().values
+            if len(rr_intervals) > 0:
+                st.success(f"✅ Convertita colonna: {first_col}")
+        except:
+            pass
+    
+    st.write(f"📊 Intervalli RR estratti: {len(rr_intervals)}")
     
     return rr_intervals
 
@@ -132,6 +156,38 @@ def create_file_analysis(rr_intervals, hrv_metrics):
         <p><strong>Consiglio:</strong> {advice}</p>
     </div>
     """, unsafe_allow_html=True)
+def debug_file_content(df, uploaded_file):
+    """Mostra informazioni di debug sul file caricato"""
+    st.header("🐛 Debug Informazioni File")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("📋 Informazioni File")
+        st.write(f"**Nome file:** {uploaded_file.name}")
+        st.write(f"**Dimensioni:** {uploaded_file.size} bytes")
+        st.write(f"**Numero colonne:** {len(df.columns)}")
+        st.write(f"**Numero righe:** {len(df)}")
+        st.write(f"**Colonne:** {list(df.columns)}")
+    
+    with col2:
+        st.subheader("📊 Anteprima Dati")
+        st.dataframe(df.head(10), use_container_width=True)
+        
+        st.subheader("🔍 Info Colonne")
+        for col in df.columns:
+            col_type = df[col].dtype
+            sample_values = df[col].dropna().head(3).tolist()
+            st.write(f"**{col}** ({col_type}): {sample_values}")
+
+def create_sample_ibi_file():
+    """Crea un file IBI di esempio per test"""
+    sample_data = {
+        'RR_Intervals': [856, 812, 789, 845, 801, 832, 798, 856, 811, 790],
+        'Time': [f"10:00:{i:02d}" for i in range(10)]
+    }
+    df = pd.DataFrame(sample_data)
+    return df.to_csv(index=False)
 
 # =============================================================================
 # FUNZIONE PRINCIPALE DI ANALISI - VERSIONE COMPLETA
@@ -835,11 +891,24 @@ if analyze_btn:
                     st.stop()
                 
                 # Processa i dati
-                rr_intervals = process_rr_intervals(df)
-                
-                if len(rr_intervals) == 0:
-                    st.error("❌ Nessun dato RR/IBI trovato nel file")
-                    st.stop()
+		debug_file_content(df, uploaded_file)  # Mostra debug
+		rr_intervals = process_rr_intervals(df)
+
+		if len(rr_intervals) == 0:
+    			st.error("❌ Nessun dato RR/IBI trovato nel file")
+    
+    			# Offri download file di esempio
+    			st.subheader("🎯 Prova con un file di esempio")
+    			sample_csv = create_sample_ibi_file()
+    
+    			st.download_button(
+        			label="📥 Scarica File IBI di Esempio",
+        			data=sample_csv,
+        			file_name="ibi_example.csv",
+        			mime="text/csv",
+        			help="Usa questo file per testare l'app"
+    			)
+    			st.stop()
                 
                 # Calcola metriche HRV
                 hrv_metrics = calculate_hrv_metrics_from_rr(rr_intervals)
@@ -872,12 +941,39 @@ if analyze_btn:
             st.success("Report PDF generato! (Integreremo le tue funzioni PDF qui)")
 
 else:
-    # Schermata iniziale
-    st.info("👆 **Configura l'analisi nella sidebar e premi 'ANALISI COMPLETA'**")
+    # Schermata iniziale AGGIORNATA
+    st.info("👆 **Carica un file IBI dalla sidebar o usa l'analisi simulata**")
     
     col1, col2 = st.columns(2)
     
     with col1:
+        st.subheader("📁 Carica File IBI")
+        st.markdown("""
+        **Formati supportati:**
+        - CSV, TXT, Excel
+        - Colonne: RR, IBI, Interval
+        - Valori numerici (ms)
+        
+        **Esempio:**
+        ```
+        RR_Intervals
+        856
+        812  
+        789
+        845
+        ```
+        """)
+        
+        # Bottone download esempio - AGGIUNGI QUESTO
+        sample_csv = create_sample_ibi_file()
+        st.download_button(
+            label="📥 Scarica File Esempio",
+            data=sample_csv,
+            file_name="hrv_sample_data.csv",
+            mime="text/csv"
+        )
+    
+    with col2:
         st.subheader("🎯 Cosa include questa versione ULTIMATE:")
         st.markdown("""
         - ✅ **Analisi HRV COMPLETA** con i tuoi 3 algoritmi
@@ -887,18 +983,7 @@ else:
         - 🎯 **Valutazione clinica** personalizzata
         - 📈 **Grafici interattivi** Plotly
         - 👤 **Profilo adattivo** alla persona
-        """)
-    
-    with col2:
-        st.subheader("🚀 Rispetto alla versione PDF:")
-        st.markdown("""
-        - 🌐 **Interfaccia web** moderna e interattiva
-        - ⚡ **Risultati in tempo reale**
-        - 📱 **Accessibile** da qualsiasi dispositivo
-        - 🔄 **Facile confronto** tra algoritmi
-        - 💾 **Salvataggio** automatico sessioni
-        - 📊 **Visualizzazioni** avanzate
-        - 🎨 **Esperienza utente** migliorata
+        - 📁 **CARICAMENTO FILE IBI** (NUOVO!)
         """)
 
 # Footer
