@@ -778,7 +778,7 @@ else:
         """)
 
 # =============================================================================
-# INTERFACCIA STREAMLIT PRINCIPALE
+# INTERFACCIA STREAMLIT PRINCIPALE - VERSIONE CORRETTA
 # =============================================================================
 
 st.set_page_config(
@@ -818,6 +818,9 @@ with st.sidebar:
     
     analyze_btn = st.button("🚀 ANALISI COMPLETA", type="primary")
 
+# Inizializza metrics come None
+metrics = None
+
 # Main Content
 if analyze_btn:
     with st.spinner("🎯 **ANALISI COMPLETA IN CORSO**..."):
@@ -839,7 +842,7 @@ if analyze_btn:
                     current_hour = datetime.now().hour
                     is_sleep_time = current_hour >= 22 or current_hour <= 6
                     
-                    file_metrics = {
+                    metrics = {
                         'our_algo': {
                             'sdnn': hrv_metrics['sdnn'],
                             'rmssd': hrv_metrics['rmssd'],
@@ -891,7 +894,7 @@ if analyze_btn:
                     }
                     
                     # USA LA TUA ANALISI COMPLETA ORIGINALE!
-                    create_complete_analysis_dashboard(file_metrics)
+                    create_complete_analysis_dashboard(metrics)
                     
             except Exception as e:
                 st.error(f"❌ Errore nel processare il file: {e}")
@@ -910,7 +913,7 @@ if analyze_btn:
             create_complete_analysis_dashboard(metrics)
 
 else:
-    # Schermata iniziale
+    # Schermata iniziale - QUI metrics è None, quindi non cercare di accedervi!
     st.info("👆 **Carica un file IBI dalla sidebar o usa l'analisi simulata**")
     
     col1, col2 = st.columns(2)
