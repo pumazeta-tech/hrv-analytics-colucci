@@ -11,250 +11,59 @@ import base64
 from matplotlib.patches import Ellipse
 
 # =============================================================================
-# FUNZIONI PER CARICAMENTO FILE IBI - AGGIUNGI QUI
+# FUNZIONI PER CARICAMENTO FILE IBI - VERSIONE VELOCE
 # =============================================================================
 
-def detect_ibi_format(file_content):
-    """Rileva automaticamente il formato del file IBI"""
-    first_lines = file_content.head(10).to_string()
-    
-    if 'RR' in first_lines or 'IBI' in first_lines or 'interval' in first_lines.lower():
-        return 'rr_intervals'
-    elif 'HR' in first_lines or 'bpm' in first_lines.lower():
-        return 'hr_values' 
-    elif 'timestamp' in first_lines.lower() and ('rr' in first_lines.lower() or 'ibi' in first_lines.lower()):
-        return 'timestamp_rr'
-    else:
-        return 'raw_values'
-
-def analyze_ibi_file_structure(uploaded_file):
-    """Analizza la struttura reale del file IBI - VERSIONE CORRETTA"""
+def read_ibi_file_fast(uploaded_file):
+    """Legge file IBI - VERSIONE VELOCE e PULITA"""
     try:
         uploaded_file.seek(0)
-        content = uploaded_file.getvalue()
-        
-        st.subheader("🔍 ANALISI APPROFONDITA FORMATO FILE")
-        
-        # Analisi come bytes
-        st.write("**Analisi come bytes:**")
-        st.write(f"Dimensione totale: {len(content)} bytes")
-        
-        # Prova a decodificare come testo
-        try:
-            text_content = content.decode('utf-8')
-            
-            # DIVERSO: Usa splitlines() invece di split('\n') per gestire meglio i fine riga
-            lines = text_content.splitlines()
-            
-            st.write(f"**Numero righe REALI:** {len(lines)}")
-            
-            # Conta solo righe non vuote
-            non_empty_lines = [line.strip() for line in lines if line.strip()]
-            st.write(f"**Righe non vuote:** {len(non_empty_lines)}")
-            
-            # Analizza il contenuto reale
-            header_lines = []
-            data_lines = []
-            other_lines = []
-            
-            for line in non_empty_lines:
-                if line.startswith('[') and line.endswith(']'):
-                    header_lines.append(line)
-                elif any(keyword in line.lower() for keyword in ['notes=', 'starttime=', 'time=', 'date=']):
-                    header_lines.append(line)
-                elif line.replace('.', '').replace(',', '').strip().isdigit():
-                    data_lines.append(line)
-                else:
-                    other_lines.append(line)
-            
-            st.write("**📊 STATISTICHE REALI:**")
-            st.write(f"- 📋 Righe header: {len(header_lines)}")
-            st.write(f"- 🔢 Righe dati numerici: {len(data_lines)}")
-            st.write(f"- ❓ Altre righe: {len(other_lines)}")
-            st.write(f"- 📝 Righe totali non vuote: {len(non_empty_lines)}")
-            
-            # Mostra prime 30 righe non vuote
-            st.write("**Prime 30 righe NON VUOTE:**")
-            for i, line in enumerate(non_empty_lines[:30]):
-                if line.startswith('[') and line.endswith(']'):
-                    tipo = "📋 SEZIONE"
-                elif any(keyword in line.lower() for keyword in ['notes=', 'starttime=']):
-                    tipo = "⚙️ PARAMETRO"
-                elif line.replace('.', '').replace(',', '').strip().isdigit():
-                    tipo = "🔢 NUMERO"
-                    try:
-                        val = float(line)
-                        tipo += f" ({val} ms)"
-                    except:
-                        pass
-                else:
-                    tipo = "📝 TESTO"
-                
-                st.write(f"{i+1}: {tipo} - {line}")
-                
-            # Se ci sono altre righe, mostra un campione
-            if other_lines:
-                st.write("**🎯 Campione altre righe:**")
-                for i, line in enumerate(other_lines[:10]):
-                    st.write(f"{i+1}: {repr(line)}")
-                    
-        except UnicodeDecodeError:
-            st.error("❌ Il file contiene dati binari/non UTF-8")
-    
-    except Exception as e:
-        st.error(f"Errore nell'analisi: {e}")
-
-def read_real_ibi_file_corrected(uploaded_file):
-    """Legge file IBI - VERSIONE CORRETTA per formato Bodyguard/altro"""
-    try:
-        uploaded_file.seek(0)
-        content = uploaded_file.getvalue()
-        
-        # PRIMA analizza il formato
-        analyze_ibi_file_structure(uploaded_file)
-        
-        # POI leggi i dati
-        text_content = content.decode('utf-8')
-        lines = text_content.splitlines()
-        non_empty_lines = [line.strip() for line in lines if line.strip()]
+        content = uploaded_file.getvalue().decode('utf-8')
+        lines = content.splitlines()
         
         rr_intervals = []
-        in_data_section = False
-        data_section_started = False
+        found_points = False
         
-        st.info("📖 Lettura dati...")
-        
-        for i, line in enumerate(non_empty_lines):
-            # Cerca l'inizio della sezione dati
-            if not in_data_section:
-                if any(keyword in line.lower() for keyword in ['[points]']):
-                    in_data_section = True
-                    st.success(f"🎯 Trovata sezione POINTS alla riga {i+1}")
-                    continue
-                else:
-                    continue  # Salta tutto prima di [POINTS]
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
             
-            # Se siamo in [POINTS], cerca la fine degli header interni
-            if in_data_section and not data_section_started:
-                if line.startswith('[') and line.endswith(']'):
-                    st.info(f"📋 Header interno: {line}")
-                    continue  # Salta [CUSTOM1] e altri header interni
-                else:
-                    data_section_started = True
-                    st.success(f"🚀 Inizio dati REALI alla riga {i+1}")
+            if '[POINTS]' in line:
+                found_points = True
+                continue
             
-            # Se i dati sono iniziati, processa
-            if data_section_started:
-                # Se incontri una nuova sezione, STOP
-                if line.startswith('[') and line.endswith(']'):
-                    st.info(f"⏹️ Fine dati alla riga {i+1}: {line}")
-                    break
-                
-                # Processa i dati numerici
-                clean_line = line.replace(',', '.').strip()
+            if found_points and not line.startswith('['):
                 try:
-                    val = float(clean_line)
-                    if 200 <= val <= 2000:  # ms
+                    val = float(line.replace(',', '.'))
+                    if 200 <= val <= 2000:
                         rr_intervals.append(val)
-                    elif 0.2 <= val <= 2.0:  # secondi
+                    elif 0.2 <= val <= 2.0:
                         rr_intervals.append(val * 1000)
                 except ValueError:
-                    # Se non è un numero, forse siamo finiti nei dati
                     continue
         
-        st.success(f"✅ Intervalli RR estratti: {len(rr_intervals)}")
-        
-        if len(rr_intervals) > 0:
-            st.write(f"📊 Prime 10 valori: {rr_intervals[:10]}")
-            st.write(f"📈 Statistiche: Min={min(rr_intervals):.1f}ms, Max={max(rr_intervals):.1f}ms, Mean={sum(rr_intervals)/len(rr_intervals):.1f}ms")
-        
-        return rr_intervals
+        return np.array(rr_intervals, dtype=float)
         
     except Exception as e:
-        st.error(f"❌ Errore nella lettura: {e}")
-        return []
-
-def process_rr_intervals_improved(df, uploaded_file):
-    """Processa file con diverse strategie - VERSIONE MIGLIORATA"""
-    rr_intervals = []
-    
-    st.write("🔍 **Analisi colonne del file:**")
-    st.write(f"Colonne trovate: {list(df.columns)}")
-    
-    # Strategia 1: Cerca colonne RR/IBI nel DataFrame
-    for col in df.columns:
-        col_lower = str(col).lower()
-        if any(keyword in col_lower for keyword in ['rr', 'ibi', 'interval', 'interbeat', 'r-r']):
-            st.success(f"✅ Trovata colonna RR: {col}")
-            try:
-                values = pd.to_numeric(df[col], errors='coerce').dropna()
-                # Filtra valori realistici (200-2000 ms)
-                realistic_values = values[(values >= 200) & (values <= 2000)]
-                if len(realistic_values) > 0:
-                    rr_intervals = realistic_values.values
-                    st.info(f"🎯 Usati {len(rr_intervals)} valori RR dalla colonna {col}")
-                    break
-                else:
-                    # Forse sono in secondi?
-                    values_seconds = values[(values >= 0.2) & (values <= 2.0)] * 1000
-                    if len(values_seconds) > 0:
-                        rr_intervals = values_seconds.values
-                        st.info("🔁 Valori convertiti da secondi a millisecondi")
-                        break
-            except Exception as e:
-                st.warning(f"⚠️ Errore processando colonna {col}: {e}")
-                continue
-    
-    # Strategia 2: Se il file ha header speciali, leggi come testo
-    if len(rr_intervals) == 0:
-        st.info("🔍 Provo lettura come file di testo...")
-        rr_intervals = read_real_ibi_file_corrected(uploaded_file)
-    
-    # Strategia 3: Prova la prima colonna numerica come fallback
-    if len(rr_intervals) == 0:
-        st.info("🔍 Provo con colonne numeriche...")
-        for col in df.columns:
-            if pd.api.types.is_numeric_dtype(df[col]):
-                try:
-                    values = pd.to_numeric(df[col], errors='coerce').dropna()
-                    realistic_values = values[(values >= 200) & (values <= 2000)]
-                    if len(realistic_values) > 50:  # Almeno 50 valori realistici
-                        rr_intervals = realistic_values.values
-                        st.info(f"📊 Usati {len(rr_intervals)} valori dalla colonna {col}")
-                        break
-                except:
-                    continue
-    
-    st.write(f"📈 Intervalli RR finali estratti: {len(rr_intervals)}")
-    
-    if len(rr_intervals) > 0:
-        st.write(f"📊 Statistiche RR: Min={np.min(rr_intervals):.1f}ms, Max={np.max(rr_intervals):.1f}ms, Mean={np.mean(rr_intervals):.1f}ms")
-    
-    return rr_intervals
+        st.error(f"❌ Errore nella lettura del file: {e}")
+        return np.array([])
 
 def calculate_hrv_metrics_from_rr(rr_intervals):
-    """Calcola metriche HRV da RR intervals - VERSIONE CORRETTA"""
+    """Calcola metriche HRV da RR intervals - VERSIONE VELOCA"""
     if len(rr_intervals) == 0:
         return None
     
-    # CONVERTI ESPLICITAMENTE in array numpy
     rr_intervals = np.array(rr_intervals, dtype=float)
     
-    st.write(f"🔢 Tipo dati: {type(rr_intervals)}, Forma: {rr_intervals.shape}")
-    
-    # Se i valori sono troppo piccoli (probabilmente secondi), converti in ms
+    # Se valori troppo piccoli, converti in ms
     if np.mean(rr_intervals) < 100:
         rr_intervals = rr_intervals * 1000
-        st.info("🔁 Valori convertiti da secondi a millisecondi")
     
-    # Calcola metriche HRV
     mean_rr = np.mean(rr_intervals)
     sdnn = np.std(rr_intervals)
-    
-    # RMSSD - ORA FUNZIONERAÀ perché è array numpy
     differences = np.diff(rr_intervals)
     rmssd = np.sqrt(np.mean(differences ** 2))
-    
     hr_mean = 60000 / mean_rr if mean_rr > 0 else 0
     
     return {
@@ -271,11 +80,11 @@ def create_rr_timeline_plot(rr_intervals):
     fig = go.Figure()
     
     fig.add_trace(go.Scatter(
-        x=np.arange(len(rr_intervals)), y=rr_intervals,
-        mode='lines+markers',
+        x=np.arange(len(rr_intervals)), 
+        y=rr_intervals,
+        mode='lines',
         name='RR Intervals',
-        line=dict(color='#e74c3c', width=2),
-        marker=dict(size=4)
+        line=dict(color='#e74c3c', width=2)
     ))
     
     fig.update_layout(
@@ -288,356 +97,8 @@ def create_rr_timeline_plot(rr_intervals):
     
     return fig
 
-def create_complete_file_analysis(hrv_metrics, rr_intervals):
-    """Crea analisi COMPLETA con TUTTI i grafici e report originali"""
-    
-    # Converti in array numpy per sicurezza
-    rr_intervals = np.array(rr_intervals, dtype=float)
-    
-    # 1. METRICHE PRINCIPALI 
-    st.header("📊 Analisi HRV Completa da File")
-    
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric("SDNN", f"{hrv_metrics['sdnn']:.1f} ms")
-        st.metric("RMSSD", f"{hrv_metrics['rmssd']:.1f} ms")
-    with col2:
-        st.metric("Freq. Cardiaca Media", f"{hrv_metrics['hr_mean']:.1f} bpm")
-        st.metric("Intervalli Analizzati", hrv_metrics['n_intervals'])
-    with col3:
-        st.metric("Durata Registrazione", f"{hrv_metrics['total_duration']:.1f} min")
-        st.metric("RR Medio", f"{hrv_metrics['mean_rr']:.1f} ms")
-    with col4:
-        st.metric("Battiti Totali", f"{hrv_metrics['n_intervals']:,}")
-    
-    # 2. TIMELINE RR INTERVALS
-    st.subheader("📈 Timeline RR Intervals")
-    st.plotly_chart(create_rr_timeline_plot(rr_intervals), use_container_width=True)
-    
-    # 3. POINCARÉ PLOT CORRETTO
-    st.subheader("🔄 Poincaré Plot - Analisi Non Lineare")
-    
-    if len(rr_intervals) > 1:
-        # ASSICURATI che siano array numpy
-        rr_n = rr_intervals[:-1]
-        rr_n1 = rr_intervals[1:]
-        
-        # Calcola SD1 e SD2
-        differences = rr_n - rr_n1  # ORA FUNZIONA!
-        sd1 = np.sqrt(0.5 * np.var(differences))
-        sd2 = np.sqrt(2 * np.var(rr_intervals) - 0.5 * np.var(differences))
-        
-        fig_poincare = go.Figure()
-        
-        # Punti scatter
-        fig_poincare.add_trace(go.Scatter(
-            x=rr_n, y=rr_n1, 
-            mode='markers',
-            marker=dict(size=4, color='#3498db', opacity=0.6),
-            name='Battiti RR'
-        ))
-        
-        # Linea identità
-        max_val = max(np.max(rr_n), np.max(rr_n1))
-        min_val = min(np.min(rr_n), np.min(rr_n1))
-        fig_poincare.add_trace(go.Scatter(
-            x=[min_val, max_val], y=[min_val, max_val],
-            mode='lines',
-            line=dict(dash='dash', color='red'),
-            name='Linea Identità'
-        ))
-        
-        fig_poincare.update_layout(
-            title=f'Poincaré Plot - SD1: {sd1:.1f}ms, SD2: {sd2:.1f}ms',
-            xaxis_title='RRn (ms)',
-            yaxis_title='RRn+1 (ms)',
-            template='plotly_white'
-        )
-        
-        st.plotly_chart(fig_poincare, use_container_width=True)
-    
-    # 4. ISTOGRAMMA DISTRIBUZIONE
-    st.subheader("📊 Distribuzione RR Intervals")
-    fig_hist = px.histogram(
-        x=rr_intervals, 
-        title="Distribuzione RR Intervals",
-        labels={'x': 'RR Interval (ms)', 'y': 'Frequenza'},
-        nbins=50
-    )
-    st.plotly_chart(fig_hist, use_container_width=True)
-    
-    # 5. ANALISI FREQUENZIALE (simulata dai dati reali)
-    st.subheader("📡 Analisi Dominio Frequenze")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # Simula componenti frequenziali basate sui dati reali
-        total_power = hrv_metrics['sdnn'] ** 2 * 10
-        vlf = total_power * 0.1
-        lf = total_power * 0.4 
-        hf = total_power * 0.5
-        
-        components = ['VLF', 'LF', 'HF']
-        values = [vlf, lf, hf]
-        
-        fig_power = go.Figure(go.Bar(
-            x=components, y=values,
-            marker_color=['#3498db', '#e74c3c', '#2ecc71']
-        ))
-        fig_power.update_layout(title="Componenti Power Spectrum")
-        st.plotly_chart(fig_power, use_container_width=True)
-    
-    with col2:
-        # LF/HF Ratio
-        lf_hf_ratio = lf / hf if hf > 0 else 1.0
-        
-        fig_ratio = go.Figure(go.Bar(
-            x=['LF/HF'], y=[lf_hf_ratio],
-            marker_color=['#9b59b6']
-        ))
-        fig_ratio.update_layout(title="Rapporto LF/HF")
-        fig_ratio.add_hline(y=1.5, line_dash="dash", line_color="red", annotation_text="Ideale")
-        st.plotly_chart(fig_ratio, use_container_width=True)
-    
-    # 6. VALUTAZIONE CLINICA COMPLETA
-    st.subheader("🎯 Valutazione Clinica e Raccomandazioni")
-    
-    sdnn_val = hrv_metrics['sdnn']
-    rmssd_val = hrv_metrics['rmssd']
-    
-    if sdnn_val > 120 and rmssd_val > 50:
-        valutazione = "**ECCELLENTE** - Variabilità cardiaca da atleta"
-        colore = "green"
-        raccomandazioni = "Continua così! Mantieni il tuo stile di vita sano e l'allenamento regolare."
-    elif sdnn_val > 80 and rmssd_val > 30:
-        valutazione = "**BUONA** - Variabilità nella norma"
-        colore = "blue" 
-        raccomandazioni = "Buon lavoro! Potresti migliorare con più attività aerobica e tecniche di respirazione."
-    elif sdnn_val > 60:
-        valutazione = "**NORMALE** - Variabilità accettabile"
-        colore = "orange"
-        raccomandazioni = "Consigliato: tecniche di respirazione, riduzione stress, e attività fisica regolare."
-    else:
-        valutazione = "**DA MIGLIORARE** - Variabilità ridotta"
-        colore = "red"
-        raccomandazioni = "Importante: consulta un medico, migliora stile di vita, riduci stress e dormi meglio."
-    
-    st.markdown(f"""
-    <div style='padding: 20px; background-color: {colore}20; border-radius: 10px; border-left: 4px solid {colore}; margin: 10px 0;'>
-        <h4>📋 Valutazione: {valutazione}</h4>
-        <p><strong>SDNN:</strong> {sdnn_val:.1f} ms | <strong>RMSSD:</strong> {rmssd_val:.1f} ms | <strong>HR Medio:</strong> {hrv_metrics['hr_mean']:.1f} bpm</p>
-        <p><strong>💡 Raccomandazioni:</strong> {raccomandazioni}</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # 7. ANALISI TREND TEMPORALE
-    st.subheader("⏰ Analisi Trend Temporale")
-    
-    # Calcola trend ogni 100 battiti
-    window_size = 100
-    if len(rr_intervals) > window_size:
-        rolling_sdnn = [np.std(rr_intervals[i:i+window_size]) for i in range(0, len(rr_intervals)-window_size, window_size)]
-        rolling_hr = [60000/np.mean(rr_intervals[i:i+window_size]) for i in range(0, len(rr_intervals)-window_size, window_size)]
-        
-        fig_trend = go.Figure()
-        fig_trend.add_trace(go.Scatter(
-            y=rolling_sdnn, name='SDNN Rolling',
-            line=dict(color='#e74c3c')
-        ))
-        fig_trend.add_trace(go.Scatter(
-            y=rolling_hr, name='HR Rolling',
-            line=dict(color='#2ecc71'),
-            yaxis='y2'
-        ))
-        
-        fig_trend.update_layout(
-            title='Trend SDNN e Frequenza Cardiaca',
-            yaxis=dict(title='SDNN (ms)'),
-            yaxis2=dict(title='Frequenza Cardiaca (bpm)', overlaying='y', side='right')
-        )
-        
-        st.plotly_chart(fig_trend, use_container_width=True)
-    
-    # 8. RIEPILOGO FINALE COMPLETO
-    st.header("📋 Riepilogo Completo Analisi")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader("✅ Punti di Forza")
-        if hrv_metrics['sdnn'] > 80:
-            st.markdown("""
-            - **Variabilità cardiaca nella norma o superiore**
-            - **Bilancio autonomico equilibrato**  
-            - **Recupero parasimpatico adeguato**
-            - **Coerenza cardiaca soddisfacente**
-            - **Dati di alta qualità e consistenza**
-            """)
-        else:
-            st.markdown("""
-            - **Monitoraggio continuo disponibile**
-            - **Dati sufficienti per analisi accurata**
-            - **Possibilità di miglioramento misurabile**
-            - **Baseline stabilita per confronti futuri**
-            - **Acquisizione dati corretta e completa**
-            """)
-    
-    with col2:
-        st.subheader("🎯 Raccomandazioni Finali")
-        st.markdown("""
-        - **Continuare** con attività fisica regolare
-        - **Praticare** tecniche di respirazione quotidiana
-        - **Mantenere** ritmi sonno-veglia regolari
-        - **Monitoraggio** continuo per ottimizzazione
-        - **Idratazione** adeguata durante il giorno
-        - **Gestione** dello stress con metodi scientifici
-        - **Controlli** periodici per tracking progressi
-        """)
-    
-    # 9. DOWNLOAD RISULTATI
-    st.subheader("💾 Esporta Risultati")
-    
-    # Crea dataframe con risultati
-    results_data = {
-        'Parametro': ['SDNN', 'RMSSD', 'Frequenza_Cardiaca_Media', 'RR_Medio', 'Intervalli_Analizzati', 'Durata_Registrazione_min'],
-        'Valore': [hrv_metrics['sdnn'], hrv_metrics['rmssd'], hrv_metrics['hr_mean'], hrv_metrics['mean_rr'], 
-                  hrv_metrics['n_intervals'], hrv_metrics['total_duration']],
-        'Unità': ['ms', 'ms', 'bpm', 'ms', 'n', 'minuti']
-    }
-    
-    results_df = pd.DataFrame(results_data)
-    csv = results_df.to_csv(index=False)
-    
-    st.download_button(
-        label="📥 Scarica Report Completo CSV",
-        data=csv,
-        file_name=f"hrv_analysis_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-        mime="text/csv"
-    )
-
-def process_rr_intervals(df):
-    """Processa file con colonne RR/IBI intervals - VERSIONE MIGLIORATA"""
-    rr_intervals = []
-    
-    st.write("🔍 **Analisi colonne del file:**")
-    st.write(f"Colonne trovate: {list(df.columns)}")
-    st.write(f"Prime righe del file:")
-    st.dataframe(df.head(), use_container_width=True)
-    
-    # Cerca colonne RR/IBI con pattern più ampi
-    for col in df.columns:
-        col_lower = col.lower()
-        if any(keyword in col_lower for keyword in ['rr', 'ibi', 'interval', 'interbeat', 'r-r', 'hrv']):
-            st.success(f"✅ Trovata colonna: {col}")
-            rr_intervals = df[col].dropna().astype(float).values
-            break
-    
-    # Se non trova, prova la prima colonna numerica
-    if len(rr_intervals) == 0:
-        st.info("🔍 Cerco colonne numeriche...")
-        for col in df.columns:
-            if pd.api.types.is_numeric_dtype(df[col]):
-                st.success(f"✅ Usando colonna numerica: {col}")
-                rr_intervals = df[col].dropna().astype(float).values
-                break
-    
-    # Se ancora nulla, prova a convertire la prima colonna
-    if len(rr_intervals) == 0 and len(df.columns) > 0:
-        st.info("🔍 Provo a convertire la prima colonna...")
-        try:
-            first_col = df.columns[0]
-            rr_intervals = pd.to_numeric(df[first_col], errors='coerce').dropna().values
-            if len(rr_intervals) > 0:
-                st.success(f"✅ Convertita colonna: {first_col}")
-        except:
-            pass
-    
-    st.write(f"📊 Intervalli RR estratti: {len(rr_intervals)}")
-    
-    return rr_intervals
-
-
-
-
-def create_file_analysis(rr_intervals, hrv_metrics):
-    """Crea analisi per file caricato"""
-    st.header("📊 Analisi HRV da File Caricato")
-    
-    # Metriche principali
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric("SDNN", f"{hrv_metrics['sdnn']:.1f} ms")
-    with col2:
-        st.metric("RMSSD", f"{hrv_metrics['rmssd']:.1f} ms") 
-    with col3:
-        st.metric("Freq. Cardiaca Media", f"{hrv_metrics['hr_mean']:.1f} bpm")
-    with col4:
-        st.metric("Intervalli Analizzati", hrv_metrics['n_intervals'])
-    
-    # Timeline RR intervals
-    st.plotly_chart(create_rr_timeline_plot(rr_intervals), use_container_width=True)
-    
-    # Valutazione
-    st.subheader("🎯 Valutazione")
-    
-    if hrv_metrics['rmssd'] > 50:
-        status = "✅ VARIABILITÀ ECCELLENTE"
-        color = "green"
-        advice = "Ottima variabilità cardiaca, tipica di buona forma fisica e recupero."
-    elif hrv_metrics['rmssd'] > 30:
-        status = "👍 VARIABILITÀ BUONA" 
-        color = "blue"
-        advice = "Variabilità nella norma. Continua con uno stile di vita sano."
-    else:
-        status = "⚠️ VARIABILITÀ RIDOTTA"
-        color = "orange" 
-        advice = "Variabilità ridotta. Consigliato ridurre stress e migliorare sonno."
-    
-    st.markdown(f"""
-    <div style='padding: 20px; background-color: {color}20; border-radius: 10px; border-left: 4px solid {color};'>
-        <h4>{status}</h4>
-        <p><strong>RMSSD:</strong> {hrv_metrics['rmssd']:.1f} ms | <strong>SDNN:</strong> {hrv_metrics['sdnn']:.1f} ms</p>
-        <p><strong>Consiglio:</strong> {advice}</p>
-    </div>
-    """, unsafe_allow_html=True)
-def debug_file_content(df, uploaded_file):
-    """Mostra informazioni di debug sul file caricato"""
-    st.header("🐛 Debug Informazioni File")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader("📋 Informazioni File")
-        st.write(f"**Nome file:** {uploaded_file.name}")
-        st.write(f"**Dimensioni:** {uploaded_file.size} bytes")
-        st.write(f"**Numero colonne:** {len(df.columns)}")
-        st.write(f"**Numero righe:** {len(df)}")
-        st.write(f"**Colonne:** {list(df.columns)}")
-    
-    with col2:
-        st.subheader("📊 Anteprima Dati")
-        st.dataframe(df.head(10), use_container_width=True)
-        
-        st.subheader("🔍 Info Colonne")
-        for col in df.columns:
-            col_type = df[col].dtype
-            sample_values = df[col].dropna().head(3).tolist()
-            st.write(f"**{col}** ({col_type}): {sample_values}")
-
-def create_sample_ibi_file():
-    """Crea un file IBI di esempio per test"""
-    sample_data = {
-        'RR_Intervals': [856, 812, 789, 845, 801, 832, 798, 856, 811, 790],
-        'Time': [f"10:00:{i:02d}" for i in range(10)]
-    }
-    df = pd.DataFrame(sample_data)
-    return df.to_csv(index=False)
-
 # =============================================================================
-# FUNZIONE PRINCIPALE DI ANALISI - VERSIONE COMPLETA
+# FUNZIONE PRINCIPALE DI ANALISI - VERSIONE COMPLETA ORIGINALE
 # =============================================================================
 
 def calculate_triple_metrics(total_hours, day_offset, actual_date, is_sleep_period=False, health_profile_factor=0.5):
@@ -735,7 +196,7 @@ def calculate_triple_metrics(total_hours, day_offset, actual_date, is_sleep_peri
     }
 
 # =============================================================================
-# FUNZIONI AGGIUNTE PER COMPLETARE TUTTO
+# FUNZIONI AGGIUNTE PER COMPLETARE TUTTO - ORIGINALI
 # =============================================================================
 
 def generate_timeline_data(actual_datetime, total_hours):
@@ -1081,7 +542,7 @@ def create_complete_analysis_dashboard(metrics):
         yaxis_title="Valori (ms)"
     )
     
-    st.plotly_chart(fig_comparison, use_container_width=True, key=f"comparison_{np.random.randint(10000)}")
+    st.plotly_chart(fig_comparison, use_container_width=True)
     
     # 3. POWER SPECTRUM ANALYSIS
     st.subheader("🔬 Analisi Power Spectrum")
@@ -1098,7 +559,7 @@ def create_complete_analysis_dashboard(metrics):
             marker_color=['#3498db', '#e74c3c', '#2ecc71']
         ))
         fig_power.update_layout(title="Componenti Power Spectrum")
-        st.plotly_chart(fig_power, use_container_width=True, key=f"power_{np.random.randint(10000)}")
+        st.plotly_chart(fig_power, use_container_width=True)
     
     with col2:
         # LF/HF Ratio
@@ -1110,7 +571,7 @@ def create_complete_analysis_dashboard(metrics):
         ))
         fig_ratio.update_layout(title="Rapporto LF/HF")
         fig_ratio.add_hline(y=1.5, line_dash="dash", line_color="red", annotation_text="Ideale")
-        st.plotly_chart(fig_ratio, use_container_width=True, key=f"ratio_{np.random.randint(10000)}")
+        st.plotly_chart(fig_ratio, use_container_width=True)
     
     # 4. POINCARÉ PLOT AVANZATO
     st.subheader("🔄 Poincaré Plot - Analisi Non Lineare")
@@ -1167,7 +628,7 @@ def create_complete_analysis_dashboard(metrics):
         template='plotly_white'
     )
     
-    st.plotly_chart(fig_poincare, use_container_width=True, key=f"poincare_{np.random.randint(10000)}")
+    st.plotly_chart(fig_poincare, use_container_width=True)
     
     # 5. ANALISI FREQUENZIALE DETTAGLIATA
     st.subheader("📡 Analisi Frequenziale Dettagliata")
@@ -1244,7 +705,7 @@ def create_complete_analysis_dashboard(metrics):
         metrics['our_algo']['actual_date']
     )
     
-    st.plotly_chart(timeline_fig, use_container_width=True, key=f"timeline_{np.random.randint(10000)}")
+    st.plotly_chart(timeline_fig, use_container_width=True)
     
     # 8. ANALISI FREQUENZE APPROFONDITA
     create_frequency_analysis(metrics)
@@ -1268,13 +729,54 @@ def create_complete_analysis_dashboard(metrics):
         """)
     
     with col2:
-        st.subheader("🎯 Raccomandazioni Finales")
+        st.subheader("🎯 Raccomandazioni Finali")
         st.markdown("""
         - Continuare con attività fisica regolare
         - Praticare tecniche di respirazione
         - Mantenere ritmi sonno-veglia regolari
         - Monitoraggio continuo per ottimizzazione
         """)
+
+def create_file_analysis_simple(hrv_metrics, rr_intervals):
+    """Analisi file IBI - VERSIONE SEMPLICE e VELOCE"""
+    st.header("📊 Analisi HRV da File Caricato")
+    
+    # Metriche principali
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("SDNN", f"{hrv_metrics['sdnn']:.1f} ms")
+        st.metric("RMSSD", f"{hrv_metrics['rmssd']:.1f} ms")
+    with col2:
+        st.metric("Freq. Cardiaca Media", f"{hrv_metrics['hr_mean']:.1f} bpm")
+        st.metric("Intervalli Analizzati", f"{hrv_metrics['n_intervals']:,}")
+    with col3:
+        st.metric("Durata Registrazione", f"{hrv_metrics['total_duration']:.1f} min")
+        st.metric("RR Medio", f"{hrv_metrics['mean_rr']:.1f} ms")
+    
+    # Timeline RR intervals
+    st.subheader("📈 Timeline RR Intervals")
+    st.plotly_chart(create_rr_timeline_plot(rr_intervals), use_container_width=True)
+    
+    # Valutazione semplice
+    st.subheader("🎯 Valutazione")
+    
+    if hrv_metrics['rmssd'] > 50:
+        status = "✅ VARIABILITÀ ECCELLENTE"
+        color = "green"
+    elif hrv_metrics['rmssd'] > 30:
+        status = "👍 VARIABILITÀ BUONA" 
+        color = "blue"
+    else:
+        status = "⚠️ VARIABILITÀ RIDOTTA"
+        color = "orange"
+    
+    st.markdown(f"""
+    <div style='padding: 20px; background-color: {color}20; border-radius: 10px; border-left: 4px solid {color};'>
+        <h4>{status}</h4>
+        <p><strong>RMSSD:</strong> {hrv_metrics['rmssd']:.1f} ms | <strong>SDNN:</strong> {hrv_metrics['sdnn']:.1f} ms</p>
+    </div>
+    """, unsafe_allow_html=True)
 
 # =============================================================================
 # INTERFACCIA STREAMLIT PRINCIPALE
@@ -1321,54 +823,25 @@ with st.sidebar:
 if analyze_btn:
     with st.spinner("🎯 **ANALISI COMPLETA IN CORSO**..."):
         if uploaded_file is not None:
-            # ANALISI CON FILE CARICATO
+            # ANALISI CON FILE CARICATO - VELOCE
             try:
-                # Leggi il file
-                if uploaded_file.name.endswith('.csv'):
-                    df = pd.read_csv(uploaded_file)
-                elif uploaded_file.name.endswith('.txt'):
-                    try:
-                        df = pd.read_csv(uploaded_file, delimiter=',')
-                    except:
-                        df = pd.read_csv(uploaded_file, delimiter='\t')
-                elif uploaded_file.name.endswith('.xlsx'):
-                    df = pd.read_excel(uploaded_file)
-                else:
-                    st.error("Formato file non supportato")
-                    st.stop()
+                rr_intervals = read_ibi_file_fast(uploaded_file)
                 
-                # Processa i dati - CORRETTO
-                debug_file_content(df, uploaded_file)  # Mostra debug
-                rr_intervals = process_rr_intervals_improved(df, uploaded_file)
-
                 if len(rr_intervals) == 0:
-                    st.error("❌ Nessun dato RR/IBI trovato nel file")
-                    
-                    # Offri download file di esempio
-                    st.subheader("🎯 Prova con un file di esempio")
-                    sample_csv = create_sample_ibi_file()
-                    
-                    st.download_button(
-                        label="📥 Scarica File IBI di Esempio",
-                        data=sample_csv,
-                        file_name="ibi_example.csv",
-                        mime="text/csv",
-                        help="Usa questo file per testare l'app"
-                    )
+                    st.error("❌ Nessun dato RR valido trovato nel file")
                     st.stop()
                 
-                # Calcola metriche HRV
                 hrv_metrics = calculate_hrv_metrics_from_rr(rr_intervals)
                 
                 if hrv_metrics:
                     st.success("✅ **ANALISI FILE COMPLETATA!**")
-                    create_complete_file_analysis(hrv_metrics, rr_intervals)
+                    create_file_analysis_simple(hrv_metrics, rr_intervals)
                     
             except Exception as e:
-                st.error(f"❌ Errore nel processare il file: {str(e)}")
+                st.error(f"❌ Errore nel processare il file: {e}")
         
         else:
-            # ANALISI STANDARD (simulata)
+            # ANALISI STANDARD (simulata) - TUTTA LA TUA BELLA ANALISI ORIGINALE
             metrics = calculate_triple_metrics(
                 total_hours=recording_hours,
                 day_offset=0, 
@@ -1379,16 +852,9 @@ if analyze_btn:
             
             st.success("✅ **ANALISI SIMULATA COMPLETATA!** Tutti i dati sono pronti.")
             create_complete_analysis_dashboard(metrics)
-    
-    # Bottone esportazione
-    col1, col2, col3 = st.columns(3)
-    with col2:
-        if st.button("📄 GENERA REPORT PDF COMPLETO"):
-            st.balloons()
-            st.success("Report PDF generato! (Integreremo le tue funzioni PDF qui)")
 
 else:
-    # Schermata iniziale AGGIORNATA
+    # Schermata iniziale
     st.info("👆 **Carica un file IBI dalla sidebar o usa l'analisi simulata**")
     
     col1, col2 = st.columns(2)
@@ -1410,15 +876,6 @@ else:
         845
         ```
         """)
-        
-        # Bottone download esempio - AGGIUNGI QUESTO
-        sample_csv = create_sample_ibi_file()
-        st.download_button(
-            label="📥 Scarica File Esempio",
-            data=sample_csv,
-            file_name="hrv_sample_data.csv",
-            mime="text/csv"
-        )
     
     with col2:
         st.subheader("🎯 Cosa include questa versione ULTIMATE:")
@@ -1430,7 +887,8 @@ else:
         - 🎯 **Valutazione clinica** personalizzata
         - 📈 **Grafici interattivi** Plotly
         - 👤 **Profilo adattivo** alla persona
-        - 📁 **CARICAMENTO FILE IBI** (NUOVO!)
+        - 😴 **Analisi sonno** completa
+        - ⏰ **Timeline** con ore reali
         """)
 
 # Footer
