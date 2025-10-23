@@ -105,7 +105,7 @@ def analyze_ibi_file_structure(uploaded_file):
         st.error(f"Errore nell'analisi: {e}")
 
 def read_real_ibi_file_corrected(uploaded_file):
-    """Legge file IBI - VERSIONE CORRETTA"""
+    """Legge file IBI - VERSIONE CORRETTA per formato Bodyguard/altro"""
     try:
         uploaded_file.seek(0)
         content = uploaded_file.getvalue()
@@ -120,39 +120,53 @@ def read_real_ibi_file_corrected(uploaded_file):
         
         rr_intervals = []
         in_data_section = False
+        data_section_started = False
         
         st.info("📖 Lettura dati...")
         
         for i, line in enumerate(non_empty_lines):
-            # Cerca l'inizio dei dati
+            # Cerca l'inizio della sezione dati
             if not in_data_section:
                 if any(keyword in line.lower() for keyword in ['[points]']):
                     in_data_section = True
-                    st.success(f"🎯 Trovata sezione dati alla riga {i+1}")
+                    st.success(f"🎯 Trovata sezione POINTS alla riga {i+1}")
                     continue
                 else:
                     continue  # Salta tutto prima di [POINTS]
             
-            # Se siamo nei dati, ma incontriamo una nuova sezione, STOP
-            if line.startswith('[') and line.endswith(']'):
-                st.info(f"⏹️ Fine sezione dati alla riga {i+1}: {line}")
-                break
+            # Se siamo in [POINTS], cerca la fine degli header interni
+            if in_data_section and not data_section_started:
+                if line.startswith('[') and line.endswith(']'):
+                    st.info(f"📋 Header interno: {line}")
+                    continue  # Salta [CUSTOM1] e altri header interni
+                else:
+                    data_section_started = True
+                    st.success(f"🚀 Inizio dati REALI alla riga {i+1}")
             
-            # Processa i dati numerici
-            clean_line = line.replace(',', '.').strip()
-            try:
-                val = float(clean_line)
-                if 200 <= val <= 2000:  # ms
-                    rr_intervals.append(val)
-                elif 0.2 <= val <= 2.0:  # secondi
-                    rr_intervals.append(val * 1000)
-            except ValueError:
-                continue  # Non è un numero, salta
+            # Se i dati sono iniziati, processa
+            if data_section_started:
+                # Se incontri una nuova sezione, STOP
+                if line.startswith('[') and line.endswith(']'):
+                    st.info(f"⏹️ Fine dati alla riga {i+1}: {line}")
+                    break
+                
+                # Processa i dati numerici
+                clean_line = line.replace(',', '.').strip()
+                try:
+                    val = float(clean_line)
+                    if 200 <= val <= 2000:  # ms
+                        rr_intervals.append(val)
+                    elif 0.2 <= val <= 2.0:  # secondi
+                        rr_intervals.append(val * 1000)
+                except ValueError:
+                    # Se non è un numero, forse siamo finiti nei dati
+                    continue
         
         st.success(f"✅ Intervalli RR estratti: {len(rr_intervals)}")
         
-        if len(rr_intervals) == 0:
-            st.error("❌ Nessun dato RR valido trovato")
+        if len(rr_intervals) > 0:
+            st.write(f"📊 Prime 10 valori: {rr_intervals[:10]}")
+            st.write(f"📈 Statistiche: Min={min(rr_intervals):.1f}ms, Max={max(rr_intervals):.1f}ms, Mean={sum(rr_intervals)/len(rr_intervals):.1f}ms")
         
         return rr_intervals
         
