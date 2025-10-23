@@ -840,6 +840,13 @@ if analyze_btn:
     current_hour = datetime.now().hour
     is_sleep_time = current_hour >= 22 or current_hour <= 6
     
+if hrv_metrics:
+    st.success("✅ **ANALISI FILE COMPLETATA!**")
+    
+    # Crea metriche compatibili con le tue funzioni originali
+    current_hour = datetime.now().hour
+    is_sleep_time = current_hour >= 22 or current_hour <= 6
+    
     file_metrics = {
         'our_algo': {
             'sdnn': hrv_metrics['sdnn'],
