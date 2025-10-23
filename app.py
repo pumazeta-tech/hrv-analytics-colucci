@@ -27,84 +27,160 @@ def detect_ibi_format(file_content):
     else:
         return 'raw_values'
 
-def read_real_ibi_file(uploaded_file):
-    """Legge file IBI reali - VERSIONE MIGLIORATA per file con header"""
+def analyze_ibi_file_structure(uploaded_file):
+    """Analizza la struttura reale del file IBI"""
     try:
         uploaded_file.seek(0)
-        content = uploaded_file.getvalue().decode('utf-8')
-        lines = content.split('\n')
+        content = uploaded_file.getvalue()
         
-        st.write(f"📝 Righe totali nel file: {len(lines)}")
+        st.subheader("🔍 ANALISI APPROFONDITA FORMATO FILE")
         
+        # Analisi come bytes
+        st.write("**Analisi come bytes:**")
+        st.write(f"Dimensione totale: {len(content)} bytes")
+        st.write(f"Prime 100 bytes: {content[:100]}")
+        st.write(f"Prime 100 bytes come stringa: {content[:100].decode('utf-8', errors='ignore')}")
+        
+        # Prova a decodificare come testo
+        try:
+            text_content = content.decode('utf-8')
+            lines = text_content.split('\n')
+            
+            st.write("**Analisi come testo:**")
+            st.write(f"Numero righe: {len(lines)}")
+            
+            # Mostra prime 20 righe con analisi
+            st.write("**Prime 20 righe dettagliate:**")
+            for i, line in enumerate(lines[:20]):
+                line = line.strip()
+                if not line:
+                    continue
+                    
+                # Analizza il contenuto
+                if '[' in line and ']' in line:
+                    tipo = "📋 HEADER/SEZIONE"
+                elif '=' in line:
+                    tipo = "⚙️ PARAMETRO"
+                elif line.replace('.', '').replace(',', '').isdigit():
+                    tipo = "🔢 NUMERO"
+                    try:
+                        val = float(line)
+                        tipo += f" ({val} ms)"
+                    except:
+                        pass
+                else:
+                    # Conta caratteri non stampabili
+                    non_printable = sum(1 for char in line if ord(char) < 32 or ord(char) > 126)
+                    if non_printable > len(line) / 2:
+                        tipo = "🔒 DATI BINARI/NON ASCII"
+                    else:
+                        tipo = "📝 TESTO"
+                
+                st.write(f"{i+1}: {tipo} - {repr(line)}")
+                
+        except UnicodeDecodeError:
+            st.error("❌ Il file contiene dati binari/non UTF-8")
+            st.write("**Analisi hexadecimal:**")
+            st.write(content[:200].hex())
+    
+    except Exception as e:
+        st.error(f"Errore nell'analisi: {e}")
+
+def read_real_ibi_file_corrected(uploaded_file):
+    """Legge file IBI - VERSIONE PER FORMATI COMPLESSI"""
+    try:
+        uploaded_file.seek(0)
+        content = uploaded_file.getvalue()
+        
+        # PRIMA analizza il formato
+        analyze_ibi_file_structure(uploaded_file)
+        
+        # POI prova diverse strategie di lettura
         rr_intervals = []
-        in_data_section = False
-        header_count = 0
-        data_count = 0
-        skipped_count = 0
         
-        for i, line in enumerate(lines):
-            line = line.strip()
+        # Strategia 1: Leggi come testo semplice
+        try:
+            text_content = content.decode('utf-8')
+            lines = text_content.split('\n')
             
-            if not line:
-                skipped_count += 1
-                continue
+            st.info("📖 Provando lettura come testo...")
             
-            # SEZIONE HEADER - salta tutto fino ai dati
-            if not in_data_section:
-                if any(keyword in line.lower() for keyword in ['[header]', 'header', 'data', 'rr', 'ibi', 'interval']):
-                    header_count += 1
-                    st.info(f"📋 Header rilevato (riga {i+1}): {line}")
+            in_data_section = False
+            data_found = 0
+            
+            for i, line in enumerate(lines):
+                line = line.strip()
+                if not line:
                     continue
                 
-                # Se troviamo un numero, probabilmente siamo nei dati
-                if line.replace('.', '').replace(',', '').replace('-', '').isdigit():
-                    in_data_section = True
-                    st.success(f"🎯 Inizio dati rilevato alla riga {i+1}")
-                else:
-                    header_count += 1
-                    continue
+                # Cerca l'inizio dei dati
+                if not in_data_section:
+                    if any(keyword in line.lower() for keyword in ['[points]', '[data]', 'data:']):
+                        in_data_section = True
+                        st.success(f"🎯 Trovata sezione dati alla riga {i+1}")
+                        continue
+                    elif line.startswith('[') or '=' in line:
+                        continue  # Salta header
+                
+                # Sezione dati
+                if in_data_section:
+                    # Prova a estrarre numeri
+                    parts = line.split()
+                    for part in parts:
+                        try:
+                            val = float(part.replace(',', '.'))
+                            if 200 <= val <= 2000:  # ms
+                                rr_intervals.append(val)
+                                data_found += 1
+                            elif 0.2 <= val <= 2.0:  # secondi
+                                rr_intervals.append(val * 1000)
+                                data_found += 1
+                        except ValueError:
+                            continue
             
-            # SEZIONE DATI - processa solo numeri
-            if in_data_section:
-                # Verifica che sia un numero valido
-                clean_line = line.replace(',', '.').strip()
-                try:
-                    value = float(clean_line)
-                    
-                    # Filtra valori realistici per RR intervals
-                    if 200 <= value <= 2000:  # ms
-                        rr_intervals.append(value)
-                        data_count += 1
-                    elif 0.2 <= value <= 2.0:  # secondi → converti
-                        rr_intervals.append(value * 1000)
-                        data_count += 1
-                    elif 20 <= value <= 200:   # centisecondi → converti
-                        rr_intervals.append(value * 10)
-                        data_count += 1
-                    else:
-                        skipped_count += 1  # Valore fuori range
-                except ValueError:
-                    skipped_count += 1  # Non è un numero
+            st.write(f"📊 Dati trovati con strategia testo: {data_found}")
+            
+        except UnicodeDecodeError:
+            st.warning("⚠️ File non è testo UTF-8 puro")
         
-        # Statistiche
-        st.write(f"📊 **Statistiche lettura:**")
-        st.write(f"- Righe header: {header_count}")
-        st.write(f"- Righe dati valide: {data_count}") 
-        st.write(f"- Righe saltate: {skipped_count}")
-        st.write(f"- Intervalli RR estratti: {len(rr_intervals)}")
+        # Se non ha trovato abbastanza dati, prova altre strategie
+        if len(rr_intervals) < 100:
+            st.info("🔄 Provando analisi bytes...")
+            
+            # Cerca pattern numerici nei bytes
+            import re
+            text_content = content.decode('utf-8', errors='ignore')
+            
+            # Cerca tutti i numeri nel testo
+            numbers = re.findall(r'\b\d+\.?\d*\b', text_content)
+            st.write(f"🔢 Numeri trovati con regex: {len(numbers)}")
+            
+            for num_str in numbers:
+                try:
+                    val = float(num_str)
+                    if 200 <= val <= 2000:
+                        rr_intervals.append(val)
+                    elif 0.2 <= val <= 2.0:
+                        rr_intervals.append(val * 1000)
+                except:
+                    continue
+        
+        st.success(f"✅ Intervalli RR estratti: {len(rr_intervals)}")
         
         if len(rr_intervals) == 0:
-            st.error("❌ Nessun dato RR valido trovato")
-            # Mostra prime 30 righe per debug
-            st.subheader("🔍 Prime 30 righe del file:")
-            for i, line in enumerate(lines[:30]):
-                marker = "DATI" if i >= header_count else "HEADER"
-                st.write(f"{i+1}: {marker} - {line}")
+            st.error("❌ Impossibile estrarre dati dal file")
+            st.info("💡 **Il file potrebbe essere:**")
+            st.markdown("""
+            - Formato binario/proprietario
+            - Compresso
+            - Con codifica speciale
+            - Con dati in sezioni specifiche
+            """)
         
         return rr_intervals
         
     except Exception as e:
-        st.error(f"❌ Errore nella lettura del file: {e}")
+        st.error(f"❌ Errore nella lettura: {e}")
         return []
 
 def process_rr_intervals_improved(df, uploaded_file):
@@ -141,7 +217,7 @@ def process_rr_intervals_improved(df, uploaded_file):
     # Strategia 2: Se il file ha header speciali, leggi come testo
     if len(rr_intervals) == 0:
         st.info("🔍 Provo lettura come file di testo...")
-        rr_intervals = read_real_ibi_file(uploaded_file)
+        rr_intervals = read_real_ibi_file_corrected(uploaded_file)
     
     # Strategia 3: Prova la prima colonna numerica come fallback
     if len(rr_intervals) == 0:
