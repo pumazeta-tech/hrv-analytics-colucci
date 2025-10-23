@@ -309,7 +309,7 @@ def create_timeline_plot(hours, sdnn_data, rmssd_data, hr_data, total_hours, act
         xaxis=dict(
             type='date',
             tickformat='%H:%M',  # Mostra solo ore:minuti
-            dtick=dtick,  # Intervallo tra i tick
+            dtick=dtick,  # Intervallo entre i tick
             tickangle=45
         ),
         template='plotly_white',
@@ -737,47 +737,6 @@ def create_complete_analysis_dashboard(metrics):
         - Monitoraggio continuo per ottimizzazione
         """)
 
-def create_file_analysis_simple(hrv_metrics, rr_intervals):
-    """Analisi file IBI - VERSIONE SEMPLICE e VELOCE"""
-    st.header("📊 Analisi HRV da File Caricato")
-    
-    # Metriche principali
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric("SDNN", f"{hrv_metrics['sdnn']:.1f} ms")
-        st.metric("RMSSD", f"{hrv_metrics['rmssd']:.1f} ms")
-    with col2:
-        st.metric("Freq. Cardiaca Media", f"{hrv_metrics['hr_mean']:.1f} bpm")
-        st.metric("Intervalli Analizzati", f"{hrv_metrics['n_intervals']:,}")
-    with col3:
-        st.metric("Durata Registrazione", f"{hrv_metrics['total_duration']:.1f} min")
-        st.metric("RR Medio", f"{hrv_metrics['mean_rr']:.1f} ms")
-    
-    # Timeline RR intervals
-    st.subheader("📈 Timeline RR Intervals")
-    st.plotly_chart(create_rr_timeline_plot(rr_intervals), use_container_width=True)
-    
-    # Valutazione semplice
-    st.subheader("🎯 Valutazione")
-    
-    if hrv_metrics['rmssd'] > 50:
-        status = "✅ VARIABILITÀ ECCELLENTE"
-        color = "green"
-    elif hrv_metrics['rmssd'] > 30:
-        status = "👍 VARIABILITÀ BUONA" 
-        color = "blue"
-    else:
-        status = "⚠️ VARIABILITÀ RIDOTTA"
-        color = "orange"
-    
-    st.markdown(f"""
-    <div style='padding: 20px; background-color: {color}20; border-radius: 10px; border-left: 4px solid {color};'>
-        <h4>{status}</h4>
-        <p><strong>RMSSD:</strong> {hrv_metrics['rmssd']:.1f} ms | <strong>SDNN:</strong> {hrv_metrics['sdnn']:.1f} ms</p>
-    </div>
-    """, unsafe_allow_html=True)
-
 # =============================================================================
 # INTERFACCIA STREAMLIT PRINCIPALE
 # =============================================================================
@@ -833,72 +792,66 @@ if analyze_btn:
                 
                 hrv_metrics = calculate_hrv_metrics_from_rr(rr_intervals)
                 
-if hrv_metrics:
-    st.success("✅ **ANALISI FILE COMPLETATA!**")  # ← 4 SPAZI DOPO if!
-    
-    # Crea metriche compatibili con le tue funzioni originali
-    current_hour = datetime.now().hour
-    is_sleep_time = current_hour >= 22 or current_hour <= 6
-    
-    file_metrics = {
-        'our_algo': {
-            'sdnn': hrv_metrics['sdnn'],
-            'rmssd': hrv_metrics['rmssd'],
-            'hr_mean': hrv_metrics['hr_mean'],
-            'hr_min': max(40, hrv_metrics['hr_mean'] - 15),
-            'hr_max': min(180, hrv_metrics['hr_mean'] + 30),
-            'hr_sd': hrv_metrics['sdnn'] / 10,
-            'actual_date': datetime.now(),
-            'recording_hours': hrv_metrics['total_duration'] / 60,
-            'is_sleep_period': is_sleep_time,
-            'health_profile_factor': 0.5,
-            'total_power': hrv_metrics['sdnn'] ** 2 * 10,
-            'vlf': hrv_metrics['sdnn'] ** 2 * 1,
-            'lf': hrv_metrics['sdnn'] ** 2 * 4,
-            'hf': hrv_metrics['sdnn'] ** 2 * 5,
-            'lf_hf_ratio': 0.8 + (hrv_metrics['rmssd'] / 100),
-            'coherence': min(95, 40 + (hrv_metrics['sdnn'] / 2)),
-            # Metriche sonno (se applicabile) - COME NELLA TUA FUNZIONE ORIGINALE
-            'sleep_duration': min(8.0, (hrv_metrics['total_duration'] / 60) * 0.9) if is_sleep_time else None,
-            'sleep_efficiency': min(95, 85 + np.random.normal(0, 5)) if is_sleep_time else None,
-            'sleep_coherence': 65 + np.random.normal(0, 3) if is_sleep_time else None,
-            'sleep_hr': 58 + np.random.normal(0, 2) if is_sleep_time else None,
-            'sleep_rem': min(2.0, (hrv_metrics['total_duration'] / 60) * 0.25) if is_sleep_time else None,
-            'sleep_deep': min(1.5, (hrv_metrics['total_duration'] / 60) * 0.2) if is_sleep_time else None,
-            'sleep_wakeups': max(0, int((hrv_metrics['total_duration'] / 60) * 0.5)) if is_sleep_time else None,
-        },
-        'emwave_style': {
-            'sdnn': hrv_metrics['sdnn'] * 0.7,
-            'rmssd': hrv_metrics['rmssd'] * 0.7,
-            'hr_mean': hrv_metrics['hr_mean'] + 2,
-            'total_power': hrv_metrics['sdnn'] ** 2 * 7,
-            'vlf': hrv_metrics['sdnn'] ** 2 * 0.7,
-            'lf': hrv_metrics['sdnn'] ** 2 * 2.8,
-            'hf': hrv_metrics['sdnn'] ** 2 * 3.5,
-            'lf_hf_ratio': 0.8,
-            'coherence': 50
-        },
-        'kubios_style': {
-            'sdnn': hrv_metrics['sdnn'] * 1.3,
-            'rmssd': hrv_metrics['rmssd'] * 1.3,
-            'hr_mean': hrv_metrics['hr_mean'] - 2,
-            'total_power': hrv_metrics['sdnn'] ** 2 * 13,
-            'vlf': hrv_metrics['sdnn'] ** 2 * 1.3,
-            'lf': hrv_metrics['sdnn'] ** 2 * 5.2,
-            'hf': hrv_metrics['sdnn'] ** 2 * 6.5,
-            'lf_hf_ratio': 0.8,
-            'coherence': 70
-        }
-    }
-    
-    # USA LA TUA ANALISI COMPLETA ORIGINALE!
-    create_complete_analysis_dashboard(file_metrics)
-    
-    # USA LA TUA ANALISI COMPLETA ORIGINALE!
-    create_complete_analysis_dashboard(file_metrics)
-    
-    # USA LA TUA ANALISI COMPLETA ORIGINALE!
-    create_complete_analysis_dashboard(file_metrics)
+                if hrv_metrics:
+                    st.success("✅ **ANALISI FILE COMPLETATA!**")
+                    
+                    # Crea metriche compatibili con le tue funzioni originali
+                    current_hour = datetime.now().hour
+                    is_sleep_time = current_hour >= 22 or current_hour <= 6
+                    
+                    file_metrics = {
+                        'our_algo': {
+                            'sdnn': hrv_metrics['sdnn'],
+                            'rmssd': hrv_metrics['rmssd'],
+                            'hr_mean': hrv_metrics['hr_mean'],
+                            'hr_min': max(40, hrv_metrics['hr_mean'] - 15),
+                            'hr_max': min(180, hrv_metrics['hr_mean'] + 30),
+                            'hr_sd': hrv_metrics['sdnn'] / 10,
+                            'actual_date': datetime.now(),
+                            'recording_hours': hrv_metrics['total_duration'] / 60,
+                            'is_sleep_period': is_sleep_time,
+                            'health_profile_factor': 0.5,
+                            'total_power': hrv_metrics['sdnn'] ** 2 * 10,
+                            'vlf': hrv_metrics['sdnn'] ** 2 * 1,
+                            'lf': hrv_metrics['sdnn'] ** 2 * 4,
+                            'hf': hrv_metrics['sdnn'] ** 2 * 5,
+                            'lf_hf_ratio': 0.8 + (hrv_metrics['rmssd'] / 100),
+                            'coherence': min(95, 40 + (hrv_metrics['sdnn'] / 2)),
+                            # Metriche sonno (se applicabile) - COME NELLA TUA FUNZIONE ORIGINALE
+                            'sleep_duration': min(8.0, (hrv_metrics['total_duration'] / 60) * 0.9) if is_sleep_time else None,
+                            'sleep_efficiency': min(95, 85 + np.random.normal(0, 5)) if is_sleep_time else None,
+                            'sleep_coherence': 65 + np.random.normal(0, 3) if is_sleep_time else None,
+                            'sleep_hr': 58 + np.random.normal(0, 2) if is_sleep_time else None,
+                            'sleep_rem': min(2.0, (hrv_metrics['total_duration'] / 60) * 0.25) if is_sleep_time else None,
+                            'sleep_deep': min(1.5, (hrv_metrics['total_duration'] / 60) * 0.2) if is_sleep_time else None,
+                            'sleep_wakeups': max(0, int((hrv_metrics['total_duration'] / 60) * 0.5)) if is_sleep_time else None,
+                        },
+                        'emwave_style': {
+                            'sdnn': hrv_metrics['sdnn'] * 0.7,
+                            'rmssd': hrv_metrics['rmssd'] * 0.7,
+                            'hr_mean': hrv_metrics['hr_mean'] + 2,
+                            'total_power': hrv_metrics['sdnn'] ** 2 * 7,
+                            'vlf': hrv_metrics['sdnn'] ** 2 * 0.7,
+                            'lf': hrv_metrics['sdnn'] ** 2 * 2.8,
+                            'hf': hrv_metrics['sdnn'] ** 2 * 3.5,
+                            'lf_hf_ratio': 0.8,
+                            'coherence': 50
+                        },
+                        'kubios_style': {
+                            'sdnn': hrv_metrics['sdnn'] * 1.3,
+                            'rmssd': hrv_metrics['rmssd'] * 1.3,
+                            'hr_mean': hrv_metrics['hr_mean'] - 2,
+                            'total_power': hrv_metrics['sdnn'] ** 2 * 13,
+                            'vlf': hrv_metrics['sdnn'] ** 2 * 1.3,
+                            'lf': hrv_metrics['sdnn'] ** 2 * 5.2,
+                            'hf': hrv_metrics['sdnn'] ** 2 * 6.5,
+                            'lf_hf_ratio': 0.8,
+                            'coherence': 70
+                        }
+                    }
+                    
+                    # USA LA TUA ANALISI COMPLETA ORIGINALE!
+                    create_complete_analysis_dashboard(file_metrics)
                     
             except Exception as e:
                 st.error(f"❌ Errore nel processare il file: {e}")
