@@ -137,6 +137,10 @@ def read_real_ibi_file_corrected(uploaded_file):
                                 data_found += 1
                         except ValueError:
                             continue
+                if in_data_section and line.startswith('['):
+                    st.info(f"⏹️ Fine sezione dati alla riga {i+1}: {line}")
+                    break  # Esci quando incontri una nuova sezione
+
             
             st.write(f"📊 Dati trovati con strategia testo: {data_found}")
             
