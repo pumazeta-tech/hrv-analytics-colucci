@@ -890,25 +890,25 @@ if analyze_btn:
                     st.error("Formato file non supportato")
                     st.stop()
                 
-                # Processa i dati
-		debug_file_content(df, uploaded_file)  # Mostra debug
-		rr_intervals = process_rr_intervals(df)
+                # Processa i dati - CORRETTO
+                debug_file_content(df, uploaded_file)  # Mostra debug
+                rr_intervals = process_rr_intervals(df)
 
-		if len(rr_intervals) == 0:
-    			st.error("❌ Nessun dato RR/IBI trovato nel file")
-    
-    			# Offri download file di esempio
-    			st.subheader("🎯 Prova con un file di esempio")
-    			sample_csv = create_sample_ibi_file()
-    
-    			st.download_button(
-        			label="📥 Scarica File IBI di Esempio",
-        			data=sample_csv,
-        			file_name="ibi_example.csv",
-        			mime="text/csv",
-        			help="Usa questo file per testare l'app"
-    			)
-    			st.stop()
+                if len(rr_intervals) == 0:
+                    st.error("❌ Nessun dato RR/IBI trovato nel file")
+                    
+                    # Offri download file di esempio
+                    st.subheader("🎯 Prova con un file di esempio")
+                    sample_csv = create_sample_ibi_file()
+                    
+                    st.download_button(
+                        label="📥 Scarica File IBI di Esempio",
+                        data=sample_csv,
+                        file_name="ibi_example.csv",
+                        mime="text/csv",
+                        help="Usa questo file per testare l'app"
+                    )
+                    st.stop()
                 
                 # Calcola metriche HRV
                 hrv_metrics = calculate_hrv_metrics_from_rr(rr_intervals)
