@@ -171,16 +171,26 @@ def process_rr_intervals_improved(df, uploaded_file):
     return rr_intervals
 
 def calculate_hrv_metrics_from_rr(rr_intervals):
-    """Calcola metriche HRV da RR intervals"""
+    """Calcola metriche HRV da RR intervals - VERSIONE CORRETTA"""
     if len(rr_intervals) == 0:
         return None
     
-    rr_intervals = np.array(rr_intervals) * 1000
+    # Converti in array numpy e assicurati che siano float
+    rr_intervals = np.array(rr_intervals, dtype=float)
     
+    # Se i valori sono troppo piccoli (probabilmente secondi), converti in ms
+    if np.mean(rr_intervals) < 100:  # Se la media è < 100, probabilmente sono secondi
+        rr_intervals = rr_intervals * 1000
+        st.info("🔁 Valori convertiti da secondi a millisecondi")
+    
+    st.write(f"🔢 Dopo conversione - Min: {np.min(rr_intervals):.1f}ms, Max: {np.max(rr_intervals):.1f}ms, Mean: {np.mean(rr_intervals):.1f}ms")
+    
+    # Calcola metriche HRV
     mean_rr = np.mean(rr_intervals)
     sdnn = np.std(rr_intervals)
     
-    differences = np.diff(rr_intervals)
+    # RMSSD - differenze tra intervalli consecutivi
+    differences = np.diff(rr_intervals)  # Ora funziona perché è array numpy
     rmssd = np.sqrt(np.mean(differences ** 2))
     
     hr_mean = 60000 / mean_rr if mean_rr > 0 else 0
@@ -191,7 +201,7 @@ def calculate_hrv_metrics_from_rr(rr_intervals):
         'rmssd': rmssd, 
         'hr_mean': hr_mean,
         'n_intervals': len(rr_intervals),
-        'total_duration': np.sum(rr_intervals) / 60000
+        'total_duration': np.sum(rr_intervals) / 60000  # in minuti
     }
 
 def create_rr_timeline_plot(rr_intervals):
