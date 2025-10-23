@@ -818,9 +818,6 @@ with st.sidebar:
     
     analyze_btn = st.button("🚀 ANALISI COMPLETA", type="primary")
 
-# Inizializza metrics come None
-metrics = None
-
 # Main Content
 if analyze_btn:
     with st.spinner("🎯 **ANALISI COMPLETA IN CORSO**..."):
@@ -913,7 +910,7 @@ if analyze_btn:
             create_complete_analysis_dashboard(metrics)
 
 else:
-    # Schermata iniziale - QUI metrics è None, quindi non cercare di accedervi!
+    # Schermata iniziale - NESSUNA REFERENZA A metrics QUI!
     st.info("👆 **Carica un file IBI dalla sidebar o usa l'analisi simulata**")
     
     col1, col2 = st.columns(2)
