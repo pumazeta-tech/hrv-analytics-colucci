@@ -27,6 +27,195 @@ def detect_ibi_format(file_content):
     else:
         return 'raw_values'
 
+def read_real_ibi_file(uploaded_file):
+    """Legge file IBI reali da dispositivi come Bodyguard, Polar, ecc."""
+    try:
+        # Torna all'inizio del file
+        uploaded_file.seek(0)
+        content = uploaded_file.getvalue().decode('utf-8')
+        lines = content.split('\n')
+        
+        st.write(f"📝 Righe totali nel file: {len(lines)}")
+        
+        # Cerca i dati RR dopo l'header
+        rr_intervals = []
+        data_started = False
+        header_lines = []
+        data_lines = []
+        
+        for i, line in enumerate(lines):
+            line = line.strip()
+            
+            if not line:
+                continue
+                
+            # Salta linee vuote e commenti/header
+            if line.startswith('[') or line.startswith('#') or line.startswith('//') or 'header' in line.lower():
+                header_lines.append(f"Riga {i+1}: {line}")
+                continue
+            
+            # Se raggiungiamo i dati, inizia a raccogliere
+            if any(keyword in line.lower() for keyword in ['data', 'rr', 'ibi', 'interval']):
+                data_started = True
+                st.info(f"🎯 Trovata indicazione dati: {line}")
+                continue
+            
+            # Se siamo nella sezione dati o non ci sono lettere (solo numeri)
+            if data_started or not any(char.isalpha() for char in line.replace('.', '').replace(',', '')):
+                data_lines.append(line)
+                # Prova a estrarre numeri dalla riga
+                parts = line.split()
+                for part in parts:
+                    try:
+                        # Pulisci il valore da eventuali caratteri speciali
+                        clean_part = part.replace(',', '.').strip()
+                        value = float(clean_part)
+                        
+                        # Verifica che sia un RR interval realistico
+                        if 200 <= value <= 2000:  # RR intervals realistici in ms
+                            rr_intervals.append(value)
+                        elif 0.2 <= value <= 2.0:  # Forse sono in secondi
+                            rr_intervals.append(value * 1000)  # Converti in ms
+                        elif 20 <= value <= 200:   # Forse sono in centisecondi
+                            rr_intervals.append(value * 10)    # Converti in ms
+                    except ValueError:
+                        continue
+        
+        # Debug info
+        st.info(f"📋 Righe header trovate: {len(header_lines)}")
+        st.info(f"📊 Righe dati trovate: {len(data_lines)}")
+        
+        if header_lines:
+            with st.expander("🔍 Vedi dettagli header"):
+                for header in header_lines[:10]:  # Mostra prime 10 righe header
+                    st.write(header)
+        
+        if data_lines:
+            with st.expander("🔍 Vedi prime righe dati"):
+                for data_line in data_lines[:10]:  # Mostra prime 10 righe dati
+                    st.write(data_line)
+        
+        st.success(f"✅ Letti {len(rr_intervals)} intervalli RR validi")
+        
+        if len(rr_intervals) == 0:
+            st.error("❌ Nessun dato RR valido trovato")
+            st.info("💡 **Suggerimenti:**")
+            st.markdown("""
+            - Verifica che il file contenga valori numerici
+            - I valori dovrebbero essere tra 200-2000 ms (o 0.2-2.0 secondi)
+            - Se il formato è diverso, condividi un esempio delle prime righe
+            """)
+        
+        return rr_intervals
+        
+    except Exception as e:
+        st.error(f"❌ Errore nella lettura del file: {e}")
+        return []
+
+def process_rr_intervals_improved(df, uploaded_file):
+    """Processa file con diverse strategie - VERSIONE MIGLIORATA"""
+    rr_intervals = []
+    
+    st.write("🔍 **Analisi colonne del file:**")
+    st.write(f"Colonne trovate: {list(df.columns)}")
+    
+    # Strategia 1: Cerca colonne RR/IBI nel DataFrame
+    for col in df.columns:
+        col_lower = str(col).lower()
+        if any(keyword in col_lower for keyword in ['rr', 'ibi', 'interval', 'interbeat', 'r-r']):
+            st.success(f"✅ Trovata colonna RR: {col}")
+            try:
+                values = pd.to_numeric(df[col], errors='coerce').dropna()
+                # Filtra valori realistici (200-2000 ms)
+                realistic_values = values[(values >= 200) & (values <= 2000)]
+                if len(realistic_values) > 0:
+                    rr_intervals = realistic_values.values
+                    st.info(f"🎯 Usati {len(rr_intervals)} valori RR dalla colonna {col}")
+                    break
+                else:
+                    # Forse sono in secondi?
+                    values_seconds = values[(values >= 0.2) & (values <= 2.0)] * 1000
+                    if len(values_seconds) > 0:
+                        rr_intervals = values_seconds.values
+                        st.info("🔁 Valori convertiti da secondi a millisecondi")
+                        break
+            except Exception as e:
+                st.warning(f"⚠️ Errore processando colonna {col}: {e}")
+                continue
+    
+    # Strategia 2: Se il file ha header speciali, leggi come testo
+    if len(rr_intervals) == 0:
+        st.info("🔍 Provo lettura come file di testo...")
+        rr_intervals = read_real_ibi_file(uploaded_file)
+    
+    # Strategia 3: Prova la prima colonna numerica come fallback
+    if len(rr_intervals) == 0:
+        st.info("🔍 Provo con colonne numeriche...")
+        for col in df.columns:
+            if pd.api.types.is_numeric_dtype(df[col]):
+                try:
+                    values = pd.to_numeric(df[col], errors='coerce').dropna()
+                    realistic_values = values[(values >= 200) & (values <= 2000)]
+                    if len(realistic_values) > 50:  # Almeno 50 valori realistici
+                        rr_intervals = realistic_values.values
+                        st.info(f"📊 Usati {len(rr_intervals)} valori dalla colonna {col}")
+                        break
+                except:
+                    continue
+    
+    st.write(f"📈 Intervalli RR finali estratti: {len(rr_intervals)}")
+    
+    if len(rr_intervals) > 0:
+        st.write(f"📊 Statistiche RR: Min={np.min(rr_intervals):.1f}ms, Max={np.max(rr_intervals):.1f}ms, Mean={np.mean(rr_intervals):.1f}ms")
+    
+    return rr_intervals
+
+def calculate_hrv_metrics_from_rr(rr_intervals):
+    """Calcola metriche HRV da RR intervals"""
+    if len(rr_intervals) == 0:
+        return None
+    
+    rr_intervals = np.array(rr_intervals) * 1000
+    
+    mean_rr = np.mean(rr_intervals)
+    sdnn = np.std(rr_intervals)
+    
+    differences = np.diff(rr_intervals)
+    rmssd = np.sqrt(np.mean(differences ** 2))
+    
+    hr_mean = 60000 / mean_rr if mean_rr > 0 else 0
+    
+    return {
+        'mean_rr': mean_rr,
+        'sdnn': sdnn,
+        'rmssd': rmssd, 
+        'hr_mean': hr_mean,
+        'n_intervals': len(rr_intervals),
+        'total_duration': np.sum(rr_intervals) / 60000
+    }
+
+def create_rr_timeline_plot(rr_intervals):
+    """Crea grafico timeline degli RR intervals"""
+    fig = go.Figure()
+    
+    fig.add_trace(go.Scatter(
+        x=np.arange(len(rr_intervals)), y=rr_intervals,
+        mode='lines+markers',
+        name='RR Intervals',
+        line=dict(color='#e74c3c', width=2),
+        marker=dict(size=4)
+    ))
+    
+    fig.update_layout(
+        title="📈 RR Intervals Timeline",
+        xaxis_title="Numero Battito",
+        yaxis_title="RR Interval (ms)",
+        template='plotly_white',
+        height=400
+    )
+    
+    return fig
+
 def create_complete_file_analysis(hrv_metrics, rr_intervals):
     """Crea analisi COMPLETA come prima ma con dati reali"""
     
@@ -201,51 +390,8 @@ def process_rr_intervals(df):
     
     return rr_intervals
 
-def calculate_hrv_metrics_from_rr(rr_intervals):
-    """Calcola metriche HRV da RR intervals"""
-    if len(rr_intervals) == 0:
-        return None
-    
-    rr_intervals = np.array(rr_intervals) * 1000
-    
-    mean_rr = np.mean(rr_intervals)
-    sdnn = np.std(rr_intervals)
-    
-    differences = np.diff(rr_intervals)
-    rmssd = np.sqrt(np.mean(differences ** 2))
-    
-    hr_mean = 60000 / mean_rr if mean_rr > 0 else 0
-    
-    return {
-        'mean_rr': mean_rr,
-        'sdnn': sdnn,
-        'rmssd': rmssd, 
-        'hr_mean': hr_mean,
-        'n_intervals': len(rr_intervals),
-        'total_duration': np.sum(rr_intervals) / 60000
-    }
 
-def create_rr_timeline_plot(rr_intervals):
-    """Crea grafico timeline degli RR intervals"""
-    fig = go.Figure()
-    
-    fig.add_trace(go.Scatter(
-        x=np.arange(len(rr_intervals)), y=rr_intervals,
-        mode='lines+markers',
-        name='RR Intervals',
-        line=dict(color='#e74c3c', width=2),
-        marker=dict(size=4)
-    ))
-    
-    fig.update_layout(
-        title="📈 RR Intervals Timeline",
-        xaxis_title="Numero Battito",
-        yaxis_title="RR Interval (ms)",
-        template='plotly_white',
-        height=400
-    )
-    
-    return fig
+
 
 def create_file_analysis(rr_intervals, hrv_metrics):
     """Crea analisi per file caricato"""
