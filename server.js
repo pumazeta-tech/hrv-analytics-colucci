@@ -3,7 +3,6 @@ const nodemailer = require('nodemailer');
 const cors = require('cors');
 const app = express();
 
-// Configura per il cloud
 const PORT = process.env.PORT || 3001;
 
 app.use(cors());
@@ -22,7 +21,6 @@ app.post('/send-report', async (req, res) => {
     const { activities, patientInfo } = req.body;
     
     console.log('📨 Ricevuta richiesta per', activities.length, 'attività');
-    console.log('👤 Paziente:', patientInfo.name);
 
     // Genera il file TXT
     let fileContent = `PAZIENTE: ${patientInfo.name}\n`;
@@ -64,6 +62,7 @@ app.post('/send-report', async (req, res) => {
   }
 });
 
+// Route di test AGGIORNATA
 app.get('/test', (req, res) => {
   res.json({ message: 'Server funzionante! 🚀' });
 });
