@@ -48,7 +48,7 @@ app.post('/send-report', async (req, res) => {
 
     const { data, error } = await resend.emails.send({
       from: 'App Monitoraggio <onboarding@resend.dev>',
-      to: ['robertocolucci@libero.it'],
+      to: ['pumazeta@gmail.com'],
       subject: `Report Attività - ${new Date().toLocaleDateString('it-IT')}`,
       text: `Report automatico con ${activities.length} attività registrate.\n\nIl file dettagliato è in allegato.`,
       attachments: [{
