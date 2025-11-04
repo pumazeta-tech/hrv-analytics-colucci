@@ -4,6 +4,9 @@ const cors = require('cors');
 const app = express();
 
 const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => {
+  console.log('🚀 Server email in esecuzione sulla porta', PORT);
+});
 
 app.use(cors());
 app.use(express.json());
