@@ -66,10 +66,12 @@ app.post('/send-report', async (req, res) => {
   }
 });
 
+// Route di test AGGIORNATA
 app.get('/test', (req, res) => {
   res.json({ message: 'Server funzionante! 🚀' });
 });
 
+// Route principale (tienila così com'è)
 app.get('/', (req, res) => {
   res.json({ message: 'Server Email Monitoraggio Cardiaco' });
 });
