@@ -1,4 +1,3 @@
-javascript
 const express = require('express');
 const nodemailer = require('nodemailer');
 const cors = require('cors');
@@ -64,7 +63,6 @@ app.post('/send-report', async (req, res) => {
   }
 });
 
-// Route di test AGGIORNATA
 app.get('/test', (req, res) => {
   res.json({ message: 'Server funzionante! 🚀' });
 });
