@@ -71,6 +71,6 @@ app.get('/', (req, res) => {
   res.json({ message: 'Server Email Monitoraggio Cardiaco' });
 });
 
-app.listen(PORT, () => {
-  console.log('🚀 Server email in esecuzione sulla porta', PORT);
+app.listen(process.env.PORT || 8080, () => {
+  console.log('🚀 Server email in esecuzione sulla porta', process.env.PORT || 8080);
 });
