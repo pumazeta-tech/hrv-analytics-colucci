@@ -3,17 +3,14 @@ const nodemailer = require('nodemailer');
 const cors = require('cors');
 const app = express();
 
-// USA LA PORTA DI RAILWAY
+// ✅ USA LA PORTA DI RENDER
 const PORT = process.env.PORT || 3001;
 
 app.use(cors());
 app.use(express.json());
 
 const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false,
-  requireTLS: true,
+  service: 'gmail',
   auth: {
     user: process.env.GMAIL_USER,
     pass: process.env.GMAIL_APP_PASSWORD
@@ -76,6 +73,6 @@ app.get('/', (req, res) => {
   res.json({ message: 'Server Email Monitoraggio Cardiaco' });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, () => {
   console.log('🚀 Server email in esecuzione sulla porta', PORT);
 });
