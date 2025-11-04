@@ -1,3 +1,5 @@
+import { Resend } from 'resend';
+const resend = new Resend(process.env.RESEND_API_KEY);
 const express = require('express');
 const nodemailer = require('nodemailer');
 const cors = require('cors');
@@ -44,20 +46,22 @@ app.post('/send-report', async (req, res) => {
       fileContent += `TIMESTAMP=${activity.timestamp}\n\n`;
     });
 
-    const mailOptions = {
-      from: 'App Monitoraggio <pumazeta@gmail.com>',
-      to: 'robertocolucci@libero.it',
+    const { data, error } = await resend.emails.send({
+      from: 'App Monitoraggio <onboarding@resend.dev>',
+      to: ['robertocolucci@libero.it'],
       subject: `Report Attività - ${new Date().toLocaleDateString('it-IT')}`,
       text: `Report automatico con ${activities.length} attività registrate.\n\nIl file dettagliato è in allegato.`,
       attachments: [{
         filename: `attivita_${Date.now()}.txt`,
-        content: fileContent
+        content: Buffer.from(fileContent).toString('base64')
       }]
-    };
+    });
 
-    const info = await transporter.sendMail(mailOptions);
-    console.log('✅ Email INVIATA! Message ID:', info.messageId);
-    
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    console.log('✅ Email INVIATA con Resend! Message ID:', data.id);    
     res.json({ success: true, message: 'Email inviata con allegato' });
     
   } catch (error) {
