@@ -1,12 +1,11 @@
+javascript
 const express = require('express');
 const nodemailer = require('nodemailer');
 const cors = require('cors');
 const app = express();
 
+// USA LA PORTA DI RAILWAY
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
-  console.log('🚀 Server email in esecuzione sulla porta', PORT);
-});
 
 app.use(cors());
 app.use(express.json());
@@ -74,6 +73,6 @@ app.get('/', (req, res) => {
   res.json({ message: 'Server Email Monitoraggio Cardiaco' });
 });
 
-app.listen(process.env.PORT || 8080, () => {
-  console.log('🚀 Server email in esecuzione sulla porta', process.env.PORT || 8080);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log('🚀 Server email in esecuzione sulla porta', PORT);
 });
